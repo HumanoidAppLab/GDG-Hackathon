@@ -1,6 +1,6 @@
 # MH3 Genesis Hackathon Starter
 
-This repository is a self-contained, ROS-free starting point for building projects with the Mirsee Robotics MH3 in [Genesis](https://genesis-embodied-ai.github.io/). It includes the simulated MH3, a default world with a floor, a browser dashboard, and a Python API for controlling and observing the robot.
+This repository is a self-contained, ROS-free starting point for building projects with the [Mirsee Robotics](https://mirsee.com "Mirsee Robotics Inc.") MH3 in [Genesis](https://genesis-embodied-ai.github.io/). It includes the simulated MH3, a default world with a floor, a browser dashboard, and a Python API for controlling and observing the robot.
 
 ## Setup and run
 
