@@ -1,0 +1,84 @@
+# The starter scene contains the MH3 and a floor plane at z=0.
+robot_usd: ../assets/MH3.genesis.usda
+backend: auto
+dt: 0.01
+realtime: true
+show_viewer: true
+gravity: [0.0, 0.0, -9.81]
+spawn_position: [0.0, 0.0, 0.0]
+spawn_euler_deg: [0.0, 0.0, 0.0]
+position_kp: 120.0
+position_kv: 12.0
+slider_position_kp: 350000.0
+slider_position_kv: 4000.0
+slider_max_velocity_mps: 0.008
+slider_max_reference_lead_m: 0.015
+slider_max_force_n: 400.0
+wheel_radius_m: 0.1
+wheel_separation_m: 0.45
+max_linear_velocity_mps: 0.6
+max_angular_velocity_radps: 2.0
+drive_command_timeout_s: 0.3
+
+# Ready home pose: forearms held forward with their end-effectors level and the head looking forward.
+initial_positions:
+  head_yaw: 0.0
+  head_pitch: 0.0
+  left_1: 0.0
+  left_2: 0.0
+  left_3: 0.0
+  left_4: 0.75
+  left_5: 0.0
+  left_6: 0.0
+  left_7: 0.0
+  right_1: 0.0
+  right_2: 0.0
+  right_3: 0.0
+  right_4: 0.65
+  right_5: 0.0
+  right_6: 0.0
+  right_7: 0.0
+
+# These transforms come from the camera prims authored in MH3.usd. Genesis
+# cameras look along local -Z with local +Y up, matching USD cameras.
+cameras:
+  - name: base_left
+    parent_link: mobile_base
+    width: 640
+    height: 360
+    vertical_fov_deg: 54.0
+    transform:
+      - [0.0, 0.0, -1.0, 0.302159]
+      - [-1.0, 0.0, 0.0, 0.060000]
+      - [0.0, 1.0, 0.0, 0.106314]
+      - [0.0, 0.0, 0.0, 1.0]
+  - name: base_right
+    parent_link: mobile_base
+    width: 640
+    height: 360
+    vertical_fov_deg: 54.0
+    transform:
+      - [0.0, 0.0, -1.0, 0.302159]
+      - [-1.0, 0.0, 0.0, -0.060000]
+      - [0.0, 1.0, 0.0, 0.106314]
+      - [0.0, 0.0, 0.0, 1.0]
+  - name: head_left
+    parent_link: head_camera_mount
+    width: 640
+    height: 360
+    vertical_fov_deg: 54.0
+    transform:
+      - [0.0, 0.0, -1.0, 0.119917]
+      - [-0.00009623, 1.0, 0.0, 0.042416]
+      - [1.0, 0.00009623, 0.0, -0.024999]
+      - [0.0, 0.0, 0.0, 1.0]
+  - name: head_right
+    parent_link: head_camera_mount
+    width: 640
+    height: 360
+    vertical_fov_deg: 54.0
+    transform:
+      - [0.0, 0.0, -1.0, 0.119917]
+      - [-0.00009623, 1.0, 0.0, 0.042412]
+      - [1.0, 0.00009623, 0.0, 0.025001]
+      - [0.0, 0.0, 0.0, 1.0]

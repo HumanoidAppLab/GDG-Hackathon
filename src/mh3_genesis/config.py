@@ -1,0 +1,112 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+@dataclass(frozen=True)
+class CameraConfig:
+    """A Genesis camera mounted to a rigid MH3 link."""
+
+    name: str
+    parent_link: str
+    transform: tuple[tuple[float, float, float, float], ...]
+    width: int = 640
+    height: int = 360
+    vertical_fov_deg: float = 54.0
+    near_m: float = 0.1
+    far_m: float = 20.0
+
+    @property
+    def resolution(self) -> tuple[int, int]:
+        return self.width, self.height
+
+
+@dataclass(frozen=True)
+class SimulatorConfig:
+    """Configuration for the ROS-free MH3 hackathon simulation."""
+
+    robot_usd: Path = PROJECT_ROOT / "assets/MH3.genesis.usda"
+    backend: str = "auto"
+    dt: float = 0.01
+    realtime: bool = True
+    show_viewer: bool = True
+    gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
+    spawn_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    spawn_euler_deg: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    position_kp: float = 120.0
+    position_kv: float = 12.0
+    slider_position_kp: float = 350000.0
+    slider_position_kv: float = 4000.0
+    slider_max_velocity_mps: float = 0.008
+    slider_max_reference_lead_m: float = 0.015
+    slider_max_force_n: float = 400.0
+    wheel_radius_m: float = 0.1
+    wheel_separation_m: float = 0.45
+    max_linear_velocity_mps: float = 0.6
+    max_angular_velocity_radps: float = 2.0
+    drive_command_timeout_s: float = 0.3
+    initial_positions: dict[str, float] = field(default_factory=dict)
+    cameras: tuple[CameraConfig, ...] = ()
+
+    @classmethod
+    def from_yaml(cls, path: str | Path) -> SimulatorConfig:
+        config_path = Path(path).expanduser().resolve()
+        raw: dict[str, Any] = yaml.safe_load(config_path.read_text()) or {}
+
+        robot_usd = Path(raw.pop("robot_usd", cls.robot_usd)).expanduser()
+        if not robot_usd.is_absolute():
+            robot_usd = (config_path.parent / robot_usd).resolve()
+
+        cameras = []
+        for item in raw.pop("cameras", ()):
+            item = dict(item)
+            item["transform"] = tuple(tuple(float(value) for value in row) for row in item["transform"])
+            cameras.append(CameraConfig(**item))
+
+        for key in ("gravity", "spawn_position", "spawn_euler_deg"):
+            if key in raw:
+                raw[key] = tuple(float(value) for value in raw[key])
+
+        config = cls(robot_usd=robot_usd, cameras=tuple(cameras), **raw)
+        config.validate()
+        return config
+
+    def validate(self) -> None:
+        if not self.robot_usd.is_file():
+            raise FileNotFoundError(f"MH3 USD does not exist: {self.robot_usd}")
+        if self.robot_usd.suffix.lower() not in {".usd", ".usda", ".usdc", ".usdz"}:
+            raise ValueError("robot_usd must be a USD file")
+        if self.backend not in {"auto", "cpu", "gpu", "cuda", "amdgpu", "metal"}:
+            raise ValueError("backend must be one of: auto, cpu, gpu, cuda, amdgpu, metal")
+        if self.dt <= 0.0:
+            raise ValueError("dt must be positive")
+        if self.position_kp <= 0.0 or self.position_kv < 0.0:
+            raise ValueError("joint position gains must be non-negative with positive kp")
+        if self.slider_position_kp <= 0.0 or self.slider_position_kv < 0.0:
+            raise ValueError("slider position gains must be non-negative with positive kp")
+        if self.slider_max_velocity_mps <= 0.0 or self.slider_max_reference_lead_m <= 0.0:
+            raise ValueError("slider motion limits must be positive")
+        if self.slider_max_force_n <= 0.0:
+            raise ValueError("slider force limit must be positive")
+        if self.wheel_radius_m <= 0.0 or self.wheel_separation_m <= 0.0:
+            raise ValueError("wheel dimensions must be positive")
+        if self.max_linear_velocity_mps <= 0.0 or self.max_angular_velocity_radps <= 0.0:
+            raise ValueError("base velocity limits must be positive")
+        if self.drive_command_timeout_s <= 0.0:
+            raise ValueError("drive_command_timeout_s must be positive")
+        if len(self.gravity) != 3:
+            raise ValueError("gravity must contain three values")
+        camera_names = [camera.name for camera in self.cameras]
+        if len(camera_names) != len(set(camera_names)):
+            raise ValueError("camera names must be unique")
+        for camera in self.cameras:
+            if len(camera.transform) != 4 or any(len(row) != 4 for row in camera.transform):
+                raise ValueError(f"camera {camera.name!r} transform must be 4x4")
+            if camera.width <= 0 or camera.height <= 0:
+                raise ValueError(f"camera {camera.name!r} resolution must be positive")

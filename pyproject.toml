@@ -1,0 +1,36 @@
+[project]
+name = "mh3-genesis"
+version = "0.1.0"
+description = "Hackathon starter kit for controlling the Mirsee Robotics MH3 in Genesis"
+readme = "README.md"
+authors = [
+    { name = "Steven Rice", email = "contact@stevenrice.ca" }
+]
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "genesis-world[usd]==1.4.1",
+    "numpy>=1.26,<2.0",
+    "pillow>=11,<13",
+    "pyyaml>=6.0",
+    "torch>=2.14",
+]
+
+[project.scripts]
+mh3-genesis = "mh3_genesis:main"
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<9",
+    "ruff>=0.11",
+]

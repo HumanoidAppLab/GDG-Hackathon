@@ -1,0 +1,10 @@
+.venv/
+.pytest_cache/
+.ruff_cache/
+.vscode/
+__pycache__/
+*.py[cod]
+output/
+.idea/
+.vs/
+.vscode/

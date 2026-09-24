@@ -1,0 +1,326 @@
+#usda 1.0
+(
+    defaultPrim = "MH3"
+    metersPerUnit = 1
+    subLayers = [
+        @MH3.usd@
+    ]
+    upAxis = "Z"
+)
+
+# Genesis 1.4.1 interprets the authored bounding-sphere approximations literally.
+# Replace those mesh prims with exact cylinders while preserving the original MH3
+# asset as an untouched source. The stronger primitive type ignores inherited mesh
+# data, and the identity scale avoids non-uniform primitive scaling in Genesis.
+over "MH3"
+{
+    def Material "DriveWheelMaterial" (
+        prepend apiSchemas = ["PhysicsMaterialAPI"]
+    )
+    {
+        float physics:dynamicFriction = 1.5
+        float physics:restitution = 0
+        float physics:staticFriction = 1.5
+    }
+
+    def Material "CastorMaterial" (
+        prepend apiSchemas = ["PhysicsMaterialAPI"]
+    )
+    {
+        float physics:dynamicFriction = 0
+        float physics:restitution = 0
+        float physics:staticFriction = 0
+    }
+
+    over "joints"
+    {
+        over "left_castor_joint"
+        {
+            float physxJoint:jointFriction = 0
+        }
+
+        over "left_castor_wheel_joint"
+        {
+            float physxJoint:jointFriction = 0
+        }
+
+        over "right_castor_joint"
+        {
+            float physxJoint:jointFriction = 0
+        }
+
+        over "right_castor_wheel_joint"
+        {
+            float physxJoint:jointFriction = 0
+        }
+    }
+
+    over "mobile_base_link"
+    {
+        over "base_zedx_camera_link"
+        {
+            over "ZED_X"
+            {
+                over "base_link"
+                {
+                    over "ZED_X"
+                    {
+                        over "Looks"
+                        {
+                            over "Black"
+                            {
+                                token outputs:surface.connect = </MH3/mobile_base_link/base_zedx_camera_link/ZED_X/base_link/ZED_X/Looks/Black/Shader.outputs:surface>
+                                over "Shader"
+                                {
+                                    uniform token info:id = "UsdPreviewSurface"
+                                    uniform token info:implementationSource = "id"
+                                    color3f inputs:diffuseColor = (0.02, 0.02, 0.02)
+                                    float inputs:metallic = 0.25
+                                    float inputs:roughness = 0.35
+                                    token outputs:surface
+                                }
+                            }
+
+                            over "Black_01"
+                            {
+                                token outputs:surface.connect = </MH3/mobile_base_link/base_zedx_camera_link/ZED_X/base_link/ZED_X/Looks/Black_01/Shader.outputs:surface>
+                                over "Shader"
+                                {
+                                    uniform token info:id = "UsdPreviewSurface"
+                                    uniform token info:implementationSource = "id"
+                                    color3f inputs:diffuseColor = (0.01, 0.01, 0.01)
+                                    float inputs:metallic = 0
+                                    float inputs:roughness = 0.45
+                                    token outputs:surface
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    over "head_camera_base_frame"
+    {
+        over "head_zedxm_camera_link"
+        {
+            over "ZED_XM"
+            {
+                over "base_link"
+                {
+                    over "ZED_XM"
+                    {
+                        over "Looks"
+                        {
+                            over "Black"
+                            {
+                                token outputs:surface.connect = </MH3/head_camera_base_frame/head_zedxm_camera_link/ZED_XM/base_link/ZED_XM/Looks/Black/Shader.outputs:surface>
+                                over "Shader"
+                                {
+                                    uniform token info:id = "UsdPreviewSurface"
+                                    uniform token info:implementationSource = "id"
+                                    color3f inputs:diffuseColor = (0.02, 0.02, 0.02)
+                                    float inputs:metallic = 0.25
+                                    float inputs:roughness = 0.35
+                                    token outputs:surface
+                                }
+                            }
+
+                            over "Black_01"
+                            {
+                                token outputs:surface.connect = </MH3/head_camera_base_frame/head_zedxm_camera_link/ZED_XM/base_link/ZED_XM/Looks/Black_01/Shader.outputs:surface>
+                                over "Shader"
+                                {
+                                    uniform token info:id = "UsdPreviewSurface"
+                                    uniform token info:implementationSource = "id"
+                                    color3f inputs:diffuseColor = (0.01, 0.01, 0.01)
+                                    float inputs:metallic = 0
+                                    float inputs:roughness = 0.45
+                                    token outputs:surface
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    over "Looks"
+    {
+        over "material_A0A0A0"
+        {
+            token outputs:surface.connect = </MH3/Looks/material_A0A0A0/Shader.outputs:surface>
+            over "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                uniform token info:implementationSource = "id"
+                color3f inputs:diffuseColor = (0.62745, 0.62745, 0.62745)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.5
+                token outputs:surface
+            }
+        }
+
+        over "material_4C4C4C"
+        {
+            token outputs:surface.connect = </MH3/Looks/material_4C4C4C/Shader.outputs:surface>
+            over "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                uniform token info:implementationSource = "id"
+                color3f inputs:diffuseColor = (0.3, 0.3, 0.3)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.5
+                token outputs:surface
+            }
+        }
+
+        over "material_333333"
+        {
+            token outputs:surface.connect = </MH3/Looks/material_333333/Shader.outputs:surface>
+            over "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                uniform token info:implementationSource = "id"
+                color3f inputs:diffuseColor = (0.2, 0.2, 0.2)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.5
+                token outputs:surface
+            }
+        }
+
+        over "material_CCCCCC"
+        {
+            token outputs:surface.connect = </MH3/Looks/material_CCCCCC/Shader.outputs:surface>
+            over "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                uniform token info:implementationSource = "id"
+                color3f inputs:diffuseColor = (0.8, 0.8, 0.8)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.5
+                token outputs:surface
+            }
+        }
+
+        over "material_CAD1EE"
+        {
+            token outputs:surface.connect = </MH3/Looks/material_CAD1EE/Shader.outputs:surface>
+            over "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                uniform token info:implementationSource = "id"
+                color3f inputs:diffuseColor = (0.792157, 0.819608, 0.933333)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.5
+                token outputs:surface
+            }
+        }
+
+        over "material_F6F6F3"
+        {
+            token outputs:surface.connect = </MH3/Looks/material_F6F6F3/Shader.outputs:surface>
+            over "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                uniform token info:implementationSource = "id"
+                color3f inputs:diffuseColor = (0.964706, 0.964706, 0.952941)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.5
+                token outputs:surface
+            }
+        }
+
+        over "material_E7E7E7"
+        {
+            token outputs:surface.connect = </MH3/Looks/material_E7E7E7/Shader.outputs:surface>
+            over "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                uniform token info:implementationSource = "id"
+                color3f inputs:diffuseColor = (0.905882, 0.905882, 0.905882)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.5
+                token outputs:surface
+            }
+        }
+
+        over "material_B3B3B3"
+        {
+            token outputs:surface.connect = </MH3/Looks/material_B3B3B3/Shader.outputs:surface>
+            over "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                uniform token info:implementationSource = "id"
+                color3f inputs:diffuseColor = (0.701961, 0.701961, 0.701961)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.5
+                token outputs:surface
+            }
+        }
+
+        over "material_CDCDCD"
+        {
+            token outputs:surface.connect = </MH3/Looks/material_CDCDCD/Shader.outputs:surface>
+            over "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                uniform token info:implementationSource = "id"
+                color3f inputs:diffuseColor = (0.803922, 0.803922, 0.803922)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.5
+                token outputs:surface
+            }
+        }
+    }
+
+    over "left_castor_wheel"
+    {
+        def Cylinder "Cylinder"
+        {
+            rel material:binding:physics = </MH3/CastorMaterial>
+            uniform token axis = "Z"
+            double height = 0.03
+            double radius = 0.0625
+            float3 xformOp:scale = (1, 1, 1)
+        }
+    }
+
+    over "left_wheel"
+    {
+        def Cylinder "Cylinder"
+        {
+            rel material:binding:physics = </MH3/DriveWheelMaterial>
+            uniform token axis = "Z"
+            double height = 0.04
+            double radius = 0.1
+            float3 xformOp:scale = (1, 1, 1)
+        }
+    }
+
+    over "right_castor_wheel"
+    {
+        def Cylinder "Cylinder"
+        {
+            rel material:binding:physics = </MH3/CastorMaterial>
+            uniform token axis = "Z"
+            double height = 0.03
+            double radius = 0.0625
+            float3 xformOp:scale = (1, 1, 1)
+        }
+    }
+
+    over "right_wheel"
+    {
+        def Cylinder "Cylinder"
+        {
+            rel material:binding:physics = </MH3/DriveWheelMaterial>
+            uniform token axis = "Z"
+            double height = 0.04
+            double radius = 0.1
+            float3 xformOp:scale = (1, 1, 1)
+        }
+    }
+}
