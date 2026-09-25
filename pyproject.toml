@@ -1,14 +1,14 @@
 [project]
 name = "mh3-genesis"
-version = "0.1.0"
-description = "Hackathon starter kit for controlling the Mirsee Robotics MH3 in Genesis"
+version = "1.0.0"
+description = "Hackathon starter kit for controlling the Mirsee Robotics MH3 in Genesis."
 readme = "README.md"
 authors = [
-    { name = "Steven Rice", email = "contact@stevenrice.ca" }
+    { name = "Steven Rice", email = "srice@datarealminc.com" }
 ]
 requires-python = ">=3.13,<3.14"
 dependencies = [
-    "genesis-world[usd]==1.4.1",
+    "genesis-world[usd]>=1.4.2",
     "numpy>=1.26,<2.0",
     "pillow>=11,<13",
     "pyyaml>=6.0",
