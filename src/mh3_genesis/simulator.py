@@ -1,3 +1,4 @@
+"""Expose a ROS-free MH3 simulation with joints, links, cameras, and IK."""
 from __future__ import annotations
 
 import time
@@ -25,9 +26,13 @@ _INTERNAL_BASE_JOINTS = frozenset(
     }
 )
 
-
 def _public_joint_name(name: str) -> str:
-    """Translate a USD joint name into the small participant-facing vocabulary."""
+    """Translate a USD joint name into the participant-facing vocabulary.
+    :param name: Original joint name from the USD articulation.
+    :type name: str
+    :return: Simplified public joint name.
+    :rtype: str
+    """
     name = name.removesuffix("_joint")
     for prefix, replacement in (("L_link_", "left_"), ("R_link_", "right_"), ("L_", "left_"), ("R_", "right_")):
         if name.startswith(prefix):
@@ -37,9 +42,13 @@ def _public_joint_name(name: str) -> str:
             return replacement + part
     return name
 
-
 def _public_link_name(name: str) -> str:
-    """Give imported robot links predictable names without changing the USD."""
+    """Give imported links predictable names without changing the USD.
+    :param name: Original link name from the USD articulation.
+    :type name: str
+    :return: Simplified public link name.
+    :rtype: str
+    """
     special = {
         "base_link_head": "head_base",
         "base_link_torso": "torso_base",
@@ -56,9 +65,15 @@ def _public_link_name(name: str) -> str:
     name = name.replace("_F_sensor", "_force_sensor")
     return name.removesuffix("_ee") + "_tip" if name.endswith("_ee") else name
 
-
 def _select_genesis_backend(gs: Any, requested: str) -> Any:
-    """Map configuration names to Genesis backends without pre-empting its GPU detection."""
+    """Map a backend name to the matching Genesis backend.
+    :param gs: Imported Genesis module.
+    :type gs: Any
+    :param requested: Requested compute backend name.
+    :type requested: str
+    :return: Genesis backend selection, including its automatic GPU selector.
+    :rtype: Any
+    """
     return {
         "auto": gs.gpu,
         "gpu": gs.gpu,
@@ -68,36 +83,63 @@ def _select_genesis_backend(gs: Any, requested: str) -> Any:
         "metal": gs.metal,
     }[requested]
 
-
 @dataclass(frozen=True)
 class JointState:
-    """A copy of the current simulated joint state."""
+    """Copy the current simulated joint state.
+    :param names: Public joint names in array order.
+    :type names: tuple[str, ...]
+    :param positions: Joint positions in radians or metres.
+    :type positions: np.ndarray
+    :param velocities: Joint velocities in radians or metres per second.
+    :type velocities: np.ndarray
+    :param efforts: Joint efforts in newtons or newton-metres.
+    :type efforts: np.ndarray
+    :return: Joint state snapshot.
+    :rtype: JointState
+    """
 
     names: tuple[str, ...]
     positions: np.ndarray
     velocities: np.ndarray
     efforts: np.ndarray
 
-
 @dataclass(frozen=True)
 class CameraFrame:
-    """Images returned directly by a Genesis camera."""
+    """Hold images rendered directly by a Genesis camera.
+    :param rgb: RGB image when requested.
+    :type rgb: np.ndarray | None
+    :param depth: Depth image when requested.
+    :type depth: np.ndarray | None
+    :param segmentation: Segmentation image when requested.
+    :type segmentation: np.ndarray | None
+    :param normal: Surface-normal image when requested.
+    :type normal: np.ndarray | None
+    :return: Camera frame containing the requested channels.
+    :rtype: CameraFrame
+    """
 
     rgb: np.ndarray | None = None
     depth: np.ndarray | None = None
     segmentation: np.ndarray | None = None
     normal: np.ndarray | None = None
 
-
 class MH3Simulation:
-    """Small, ROS-free API around the MH3 Genesis articulation.
-
-    Call :meth:`build` once, then use the joint, camera, and IK methods from a
-    participant's control loop. Genesis objects remain available as ``scene``
-    and ``robot`` for projects that need lower-level functionality.
+    """Expose a ROS-free API around the MH3 Genesis articulation.
+    Call :meth:`build` once before using joints, cameras, or IK. Native Genesis
+    objects remain available through ``scene`` and ``robot``.
+    :param config: Scene, actuator, and camera configuration.
+    :type config: SimulatorConfig
+    :return: MH3 simulation controller.
+    :rtype: MH3Simulation
     """
 
     def __init__(self, config: SimulatorConfig) -> None:
+        """Store configuration and initialize the unbuilt simulator state.
+        :param config: Scene, actuator, and camera configuration.
+        :type config: SimulatorConfig
+        :return: None after initializing the controller.
+        :rtype: None
+        """
         self.config = config
         self.gs: Any = None
         self.scene: Any = None
@@ -117,6 +159,14 @@ class MH3Simulation:
 
     @staticmethod
     def _numpy(value: Any, dtype: Any | None = np.float64) -> np.ndarray:
+        """Convert a Genesis tensor or array into a NumPy array.
+        :param value: Tensor or array to convert.
+        :type value: Any
+        :param dtype: Requested NumPy dtype, or None to retain the input dtype.
+        :type dtype: Any | None
+        :return: Converted NumPy array.
+        :rtype: np.ndarray
+        """
         if hasattr(value, "detach"):
             value = value.detach()
         if hasattr(value, "cpu"):
@@ -124,9 +174,11 @@ class MH3Simulation:
         return np.asarray(value, dtype=dtype)
 
     def build(self) -> MH3Simulation:
-        """Initialize Genesis and load a floor plane and the articulated MH3 USD."""
+        """Initialize Genesis and build the floor, robot, and cameras.
+        :return: This built simulation for chained calls.
+        :rtype: MH3Simulation
+        """
         import genesis as gs
-
         self.gs = gs
         backend = _select_genesis_backend(gs, self.config.backend)
         gs.init(backend=backend, logging_level="warning")
@@ -143,7 +195,6 @@ class MH3Simulation:
             show_viewer=self.config.show_viewer,
         )
         self.floor = self.scene.add_entity(gs.morphs.Plane())
-
         entities = self.scene.add_stage(
             gs.morphs.USD(
                 file=str(self.config.robot_usd),
@@ -155,7 +206,6 @@ class MH3Simulation:
         if not articulated:
             raise RuntimeError(f"No articulation was found in {self.config.robot_usd}")
         self.robot = max(articulated, key=lambda entity: sum(joint.n_dofs for joint in entity.joints))
-
         for camera_config in self.config.cameras:
             self._cameras[camera_config.name] = self.scene.add_camera(
                 res=camera_config.resolution,
@@ -164,7 +214,6 @@ class MH3Simulation:
                 far=camera_config.far_m,
                 GUI=False,
             )
-
         for hook in tuple(self._scene_hooks):
             hook(self)
         self.scene.build()
@@ -175,10 +224,18 @@ class MH3Simulation:
         return self
 
     def _require_built(self) -> None:
+        """Reject robot operations before the scene is built.
+        :return: None when a robot articulation is available.
+        :rtype: None
+        """
         if self.robot is None:
             raise RuntimeError("Call build() before using the simulation")
 
     def _discover_joints(self) -> None:
+        """Index imported articulation links and one-DOF joints by USD name.
+        :return: None after updating the internal name indexes.
+        :rtype: None
+        """
         self._links = {link.name.rstrip("/").rsplit("/", 1)[-1]: link for link in self.robot.links}
         for joint in self.robot.joints:
             if joint.n_dofs == 1:
@@ -186,9 +243,11 @@ class MH3Simulation:
                 self._joint_indices[name] = int(joint.dofs_idx_local[0])
 
     def _discover_finger_mimics(self) -> None:
-        """Read the follower chains authored in the MH3 USD."""
+        """Read finger follower chains authored in the MH3 USD.
+        :return: None after indexing follower relationships.
+        :rtype: None
+        """
         from pxr import Usd
-
         stage = Usd.Stage.Open(str(self.config.robot_usd))
         if stage is None:
             raise RuntimeError(f"Could not open MH3 USD: {self.config.robot_usd}")
@@ -207,6 +266,12 @@ class MH3Simulation:
             self._finger_mimics[follower] = (reference, -float(gearing), float(offset or 0.0))
 
     def _expanded_finger_targets(self, targets: Mapping[str, float]) -> dict[str, float]:
+        """Expand commanded finger roots into their follower joint targets.
+        :param targets: Joint targets keyed by internal USD name.
+        :type targets: Mapping[str, float]
+        :return: Targets including resolved finger followers.
+        :rtype: dict[str, float]
+        """
         expanded = dict(targets)
         pending = dict(self._finger_mimics)
         while pending:
@@ -221,6 +286,12 @@ class MH3Simulation:
         return expanded
 
     def _sync_finger_mimics(self, *, immediate: bool = False) -> None:
+        """Command each follower to match its finger root.
+        :param immediate: Also teleport followers to their target poses.
+        :type immediate: bool
+        :return: None after applying follower targets.
+        :rtype: None
+        """
         if not self._finger_mimics:
             return
         roots = tuple({reference for reference, _, _ in self._finger_mimics.values()} - self._finger_mimics.keys())
@@ -235,6 +306,10 @@ class MH3Simulation:
         self.robot.control_dofs_position(values, follower_indices)
 
     def _configure_actuators(self) -> None:
+        """Configure position holds and the slower torso lift actuator.
+        :return: None after applying gains, force limits, and startup targets.
+        :rtype: None
+        """
         indices = tuple(self._joint_indices.values())
         if indices:
             self.robot.set_dofs_kp(np.full(len(indices), self.config.position_kp), indices)
@@ -258,6 +333,10 @@ class MH3Simulation:
         self._sync_finger_mimics()
 
     def _attach_cameras(self) -> None:
+        """Attach configured cameras to their named robot links.
+        :return: None after attaching all cameras.
+        :rtype: None
+        """
         for camera_config in self.config.cameras:
             try:
                 parent = self.get_link(camera_config.parent_link)
@@ -268,6 +347,12 @@ class MH3Simulation:
             self._cameras[camera_config.name].attach(parent, np.asarray(camera_config.transform))
 
     def _selection(self, values: Mapping[str, float]) -> tuple[list[float], list[int]]:
+        """Resolve public joint targets to articulation DOF indices.
+        :param values: Targets keyed by participant-facing joint name.
+        :type values: Mapping[str, float]
+        :return: Target values and matching local DOF indices.
+        :rtype: tuple[list[float], list[int]]
+        """
         public_indices = self._public_joint_indices
         unknown = sorted(set(values) - public_indices.keys())
         if unknown:
@@ -277,6 +362,10 @@ class MH3Simulation:
 
     @property
     def _public_joint_usd_names(self) -> dict[str, str]:
+        """Map public joint names to their internal USD names.
+        :return: Collision-checked public-to-USD joint mapping.
+        :rtype: dict[str, str]
+        """
         result = {
             _public_joint_name(name): name
             for name in self._joint_indices
@@ -293,10 +382,18 @@ class MH3Simulation:
 
     @property
     def _public_joint_indices(self) -> dict[str, int]:
+        """Map public joint names to local articulation DOF indices.
+        :return: Public-to-local-DOF mapping.
+        :rtype: dict[str, int]
+        """
         return {name: self._joint_indices[usd_name] for name, usd_name in self._public_joint_usd_names.items()}
 
     @property
     def _public_links(self) -> dict[str, Any]:
+        """Map readable link names to native Genesis links.
+        :return: Collision-checked public link mapping.
+        :rtype: dict[str, Any]
+        """
         links = {_public_link_name(name): link for name, link in self._links.items()}
         if len(links) != len(self._links):
             raise RuntimeError("MH3 link names collide after simplification")
@@ -304,23 +401,43 @@ class MH3Simulation:
 
     @property
     def sim_time(self) -> float:
+        """Return elapsed simulated time in seconds.
+        :return: Simulated time in seconds.
+        :rtype: float
+        """
         return self._sim_time
 
     @property
     def joint_names(self) -> tuple[str, ...]:
-        """Names available through the participant-facing joint API."""
+        """List joints available through the participant-facing API.
+        :return: Public names of controllable joints.
+        :rtype: tuple[str, ...]
+        """
         return tuple(self._public_joint_indices)
 
     @property
     def link_names(self) -> tuple[str, ...]:
-        """Names available through :meth:`get_link` and :meth:`solve_ik`."""
+        """List links available to link lookup and inverse kinematics.
+        :return: Public names of robot links.
+        :rtype: tuple[str, ...]
+        """
         return tuple(self._public_links)
 
     @property
     def camera_names(self) -> tuple[str, ...]:
+        """List names of configured on-robot cameras.
+        :return: Public camera names.
+        :rtype: tuple[str, ...]
+        """
         return tuple(self._cameras)
 
     def get_joint_state(self, names: Iterable[str] | None = None) -> JointState:
+        """Read positions, velocities, and efforts for selected joints.
+        :param names: Public joint names, or None for every controllable joint.
+        :type names: Iterable[str] | None
+        :return: Copied joint state in requested order.
+        :rtype: JointState
+        """
         self._require_built()
         selected = tuple(names) if names is not None else self.joint_names
         unknown = sorted(set(selected) - set(self.joint_names))
@@ -335,7 +452,12 @@ class MH3Simulation:
         )
 
     def get_joint_limits(self, names: Iterable[str] | None = None) -> tuple[np.ndarray, np.ndarray]:
-        """Return lower and upper position limits for the selected joints."""
+        """Read lower and upper position limits for selected joints.
+        :param names: Public joint names, or None for every controllable joint.
+        :type names: Iterable[str] | None
+        :return: Lower and upper position-limit arrays in requested order.
+        :rtype: tuple[np.ndarray, np.ndarray]
+        """
         self._require_built()
         selected = tuple(names) if names is not None else self.joint_names
         unknown = sorted(set(selected) - set(self.joint_names))
@@ -346,7 +468,12 @@ class MH3Simulation:
         return self._numpy(lower), self._numpy(upper)
 
     def get_link(self, name: str) -> Any:
-        """Return a native Genesis link by its participant-facing name."""
+        """Look up a native Genesis link by its public name.
+        :param name: Participant-facing link name.
+        :type name: str
+        :return: Native Genesis link object.
+        :rtype: Any
+        """
         self._require_built()
         links = self._public_links
         if name not in links:
@@ -354,14 +481,26 @@ class MH3Simulation:
         return links[name]
 
     def get_camera(self, name: str) -> Any:
-        """Return a native Genesis camera for advanced sensor operations."""
+        """Look up a native Genesis camera for advanced sensor operations.
+        :param name: Configured public camera name.
+        :type name: str
+        :return: Native Genesis camera object.
+        :rtype: Any
+        """
         self._require_built()
         if name not in self._cameras:
             raise KeyError(f"Unknown camera {name!r}; choose from {self.camera_names}")
         return self._cameras[name]
 
     def set_joint_positions(self, targets: Mapping[str, float], *, immediate: bool = False) -> None:
-        """Command position targets, or teleport joints when ``immediate=True``."""
+        """Command joint positions or teleport them immediately.
+        :param targets: Position targets keyed by public joint name.
+        :type targets: Mapping[str, float]
+        :param immediate: Teleport joints when True instead of moving through control.
+        :type immediate: bool
+        :return: None after submitting position targets.
+        :rtype: None
+        """
         self._require_built()
         values, indices = self._selection(targets)
         if not indices:
@@ -399,6 +538,10 @@ class MH3Simulation:
             self.robot.control_dofs_position(values, indices)
 
     def _advance_slider_reference(self) -> None:
+        """Advance the bounded torso lift reference by one physics step.
+        :return: None after commanding the next lift reference.
+        :rtype: None
+        """
         if self._slider_target is None:
             return
         slider_index = self._joint_indices["slider_joint"]
@@ -415,13 +558,26 @@ class MH3Simulation:
         self.robot.control_dofs_position([reference], [slider_index])
 
     def set_joint_velocities(self, targets: Mapping[str, float]) -> None:
+        """Command velocities for selected controllable joints.
+        :param targets: Velocity targets keyed by public joint name.
+        :type targets: Mapping[str, float]
+        :return: None after submitting velocity targets.
+        :rtype: None
+        """
         self._require_built()
         values, indices = self._selection(targets)
         if indices:
             self.robot.control_dofs_velocity(values, indices)
 
     def drive_base(self, linear_mps: float, angular_radps: float) -> None:
-        """Drive the mobile base using forward and yaw velocities."""
+        """Drive the mobile base with forward and yaw velocities.
+        :param linear_mps: Forward speed in metres per second.
+        :type linear_mps: float
+        :param angular_radps: Yaw speed in radians per second.
+        :type angular_radps: float
+        :return: None after commanding the internal drive wheels.
+        :rtype: None
+        """
         self._require_built()
         linear_mps = min(
             max(float(linear_mps), -self.config.max_linear_velocity_mps), self.config.max_linear_velocity_mps
@@ -446,10 +602,19 @@ class MH3Simulation:
         )
 
     def stop_base(self) -> None:
-        """Stop both driven wheels."""
+        """Stop the driven wheels through the base drive API.
+        :return: None after commanding zero base velocity.
+        :rtype: None
+        """
         self.drive_base(0.0, 0.0)
 
     def set_joint_efforts(self, targets: Mapping[str, float]) -> None:
+        """Command efforts for selected controllable joints.
+        :param targets: Effort targets keyed by public joint name.
+        :type targets: Mapping[str, float]
+        :return: None after submitting effort targets.
+        :rtype: None
+        """
         self._require_built()
         values, indices = self._selection(targets)
         if indices:
@@ -465,7 +630,22 @@ class MH3Simulation:
         apply: bool = False,
         **solver_options: Any,
     ) -> np.ndarray:
-        """Solve world-frame IK with Genesis and optionally apply the full q-position solution."""
+        """Solve world-frame IK and optionally apply the full solution.
+        :param end_effector: Public link name of the target end effector.
+        :type end_effector: str
+        :param position: Target XYZ position in the world frame.
+        :type position: Iterable[float]
+        :param quaternion_wxyz: Optional world-frame WXYZ orientation target.
+        :type quaternion_wxyz: Iterable[float] | None
+        :param joints: Optional public joint names to vary during solving.
+        :type joints: Iterable[str] | None
+        :param apply: Apply the returned articulation pose when True.
+        :type apply: bool
+        :param solver_options: Additional Genesis inverse-kinematics options.
+        :type solver_options: Any
+        :return: Full articulation position solution as a NumPy array.
+        :rtype: np.ndarray
+        """
         self._require_built()
         link = self.get_link(end_effector)
         dofs = None
@@ -496,7 +676,20 @@ class MH3Simulation:
         segmentation: bool = False,
         normal: bool = False,
     ) -> CameraFrame:
-        """Render a named on-robot camera and return NumPy arrays directly."""
+        """Render selected channels from a named on-robot camera.
+        :param name: Public camera name to render.
+        :type name: str
+        :param rgb: Include the RGB image when True.
+        :type rgb: bool
+        :param depth: Include the depth image when True.
+        :type depth: bool
+        :param segmentation: Include segmentation when True.
+        :type segmentation: bool
+        :param normal: Include surface normals when True.
+        :type normal: bool
+        :return: Camera frame containing the requested NumPy arrays.
+        :rtype: CameraFrame
+        """
         self._require_built()
         camera = self.get_camera(name)
         camera.move_to_attach()
@@ -505,27 +698,45 @@ class MH3Simulation:
         return CameraFrame(*values)
 
     def capture_pointcloud(self, name: str, *, world_frame: bool = True) -> tuple[np.ndarray, np.ndarray]:
-        """Render a point cloud and return ``(points, valid_depth_mask)``."""
+        """Render a camera point cloud and its valid-depth mask.
+        :param name: Public camera name to render.
+        :type name: str
+        :param world_frame: Express points in world coordinates when True.
+        :type world_frame: bool
+        :return: Point coordinates and valid-depth mask as NumPy arrays.
+        :rtype: tuple[np.ndarray, np.ndarray]
+        """
         camera = self.get_camera(name)
         camera.move_to_attach()
         points, mask = camera.render_pointcloud(world_frame=world_frame)
         return self._numpy(points, None), self._numpy(mask, None)
 
     def add_step_hook(self, hook: StepHook) -> None:
-        """Run ``hook(simulation)`` after every physics step."""
+        """Register a callback to run after every physics step.
+        :param hook: Callback receiving this simulation after each step.
+        :type hook: StepHook
+        :return: None after registering the callback.
+        :rtype: None
+        """
         self._hooks.append(hook)
 
     def add_scene_hook(self, hook: SceneHook) -> None:
-        """Run ``hook(simulation)`` just before the Genesis scene is built.
-
-        Register scene hooks before :meth:`build` to add floors, props, or
-        additional sensors with the native ``sim.gs`` and ``sim.scene`` APIs.
+        """Register a callback to run before the Genesis scene is built.
+        Use scene hooks to add geometry or sensors through native Genesis APIs.
+        :param hook: Callback receiving this simulation before scene build.
+        :type hook: SceneHook
+        :return: None after registering the callback.
+        :rtype: None
         """
         if self.scene is not None:
             raise RuntimeError("Scene hooks must be registered before build()")
         self._scene_hooks.append(hook)
 
     def step(self) -> None:
+        """Advance joint controls and physics by one simulation time step.
+        :return: None after updating physics and calling step hooks.
+        :rtype: None
+        """
         self._require_built()
         self._advance_slider_reference()
         self._sync_finger_mimics()
@@ -535,7 +746,12 @@ class MH3Simulation:
             hook(self)
 
     def run(self, *, steps: int | None = None) -> None:
-        """Run until interrupted, or for exactly ``steps`` physics steps."""
+        """Run until interrupted or until a fixed number of steps completes.
+        :param steps: Number of steps to execute, or None to run indefinitely.
+        :type steps: int | None
+        :return: None when the requested run completes.
+        :rtype: None
+        """
         self._require_built()
         next_step = time.monotonic()
         completed = 0

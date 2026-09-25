@@ -20,7 +20,7 @@ max_linear_velocity_mps: 0.6
 max_angular_velocity_radps: 2.0
 drive_command_timeout_s: 0.3
 
-# Ready home pose: forearms held forward with their end-effectors level and the head looking forward.
+# The ready home pose holds both forearms forward, levels the end effectors, and points the head forward.
 initial_positions:
   head_yaw: 0.0
   head_pitch: 0.0
@@ -39,8 +39,8 @@ initial_positions:
   right_6: 0.0
   right_7: 0.0
 
-# These transforms come from the camera prims authored in MH3.usd. Genesis
-# cameras look along local -Z with local +Y up, matching USD cameras.
+# These transforms come from camera prims authored in the bundled MH3 USD.
+# Genesis cameras look along local -Z with local +Y up, matching USD cameras.
 cameras:
   - name: base_left
     parent_link: mobile_base

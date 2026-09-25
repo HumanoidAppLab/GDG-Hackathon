@@ -1,9 +1,10 @@
+# Install the project and a suitable PyTorch backend in the local Python environment.
 $ErrorActionPreference = "Stop"
 
 Set-Location $PSScriptRoot
 
-# `.python-version` selects Python 3.13. Both Genesis and PyTorch are installed
-# inside the project environment; no system Python packages are reused.
+# The `.python-version` file selects Python 3.13.
+# Genesis and PyTorch are installed locally without reusing system packages.
 & uv sync --no-install-package torch
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE

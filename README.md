@@ -7,13 +7,13 @@ This repository is a self-contained, ROS-free starting point for building projec
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then use the helper scripts for your platform. They install the project dependencies, select the appropriate compute backend, and start the simulator.
 
 ```bash
-# Linux or macOS
+# Use this script on Linux or macOS.
 ./setup.sh
 ./run.sh
 ```
 
 ```powershell
-# Windows PowerShell
+# Use this script on Windows PowerShell.
 .\setup.ps1
 .\run.ps1
 ```
@@ -102,6 +102,12 @@ For event-style projects, register any number of per-step callbacks:
 
 ```python
 def controller(sim: MH3Simulation) -> None:
+    """Return the head to center after one simulated second.
+    :param sim: Simulation invoking this step hook.
+    :type sim: MH3Simulation
+    :return: None after submitting a head target when applicable.
+    :rtype: None
+    """
     if sim.sim_time > 1.0:
         sim.set_joint_positions({"head_yaw": 0.0})
 
@@ -115,6 +121,12 @@ Scene hooks add world geometry before Genesis compiles the scene:
 sim = MH3Simulation(config)
 
 def add_world(sim: MH3Simulation) -> None:
+    """Add a box to the scene before Genesis builds it.
+    :param sim: Simulation providing the unbuilt Genesis scene.
+    :type sim: MH3Simulation
+    :return: None after adding the box.
+    :rtype: None
+    """
     sim.scene.add_entity(sim.gs.morphs.Box(pos=(1.0, 0.0, 0.25), size=(0.5, 0.5, 0.5)))
 
 sim.add_scene_hook(add_world)

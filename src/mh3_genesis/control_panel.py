@@ -1,3 +1,4 @@
+"""Serve the optional local dashboard for robot joints, drive, and cameras."""
 from __future__ import annotations
 
 import json
@@ -15,6 +16,8 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
+from .dashboard_script import SCRIPT
+from .dashboard_style import STYLE
 from .simulator import MH3Simulation
 
 logger = logging.getLogger(__name__)
@@ -32,11 +35,21 @@ _BASE_INTERNAL_JOINTS = frozenset(
     }
 )
 
-
 class MH3ControlPanel:
-    """Local browser controls whose commands are applied on the simulation thread."""
+    """Queue local browser commands for application on the simulation thread.
+    :param simulation: Built MH3 simulation to control and observe.
+    :type simulation: MH3Simulation
+    :return: Browser dashboard controller.
+    :rtype: MH3ControlPanel
+    """
 
     def __init__(self, simulation: MH3Simulation) -> None:
+        """Initialize dashboard state from a built simulation.
+        :param simulation: Built MH3 simulation to control and observe.
+        :type simulation: MH3Simulation
+        :return: None after initializing dashboard state.
+        :rtype: None
+        """
         self.simulation = simulation
         self._lock = threading.Lock()
         self._token = secrets.token_urlsafe(24)
@@ -57,7 +70,6 @@ class MH3ControlPanel:
         self._last_camera_request_at = 0.0
         self._last_camera_render_at = 0.0
         self._camera_error: str | None = None
-
         self._joint_names = tuple(name for name in simulation.joint_names if name not in _BASE_INTERNAL_JOINTS)
         state = simulation.get_joint_state(self._joint_names)
         lower, upper = simulation.get_joint_limits(state.names)
@@ -76,17 +88,34 @@ class MH3ControlPanel:
 
     @property
     def url(self) -> str:
+        """Return the local dashboard URL after server startup.
+        :return: Loopback HTTP URL for this dashboard.
+        :rtype: str
+        """
         if self._server is None:
             raise RuntimeError("Control panel has not been started")
         return f"http://127.0.0.1:{self._server.server_port}/"
 
     def start(self, *, open_browser: bool = True) -> None:
+        """Start the loopback dashboard server and optionally open a browser.
+        :param open_browser: Open the dashboard in the default browser when True.
+        :type open_browser: bool
+        :return: None after starting or confirming the existing server.
+        :rtype: None
+        """
         if self._server is not None:
             return
         panel = self
-
         class Handler(BaseHTTPRequestHandler):
+            """Handle local dashboard HTML, state, camera, and command requests.
+            :return: Request handler bound to the control panel.
+            :rtype: Handler
+            """
             def do_GET(self) -> None:
+                """Serve the dashboard, simulation state, or a camera feed.
+                :return: None after sending an HTTP response.
+                :rtype: None
+                """
                 if self.path == "/":
                     self._send(
                         _html(
@@ -112,6 +141,10 @@ class MH3ControlPanel:
                     self.send_error(HTTPStatus.NOT_FOUND)
 
             def do_POST(self) -> None:
+                """Validate a dashboard command and enqueue it for simulation.
+                :return: None after sending an HTTP response.
+                :rtype: None
+                """
                 if self.headers.get("X-Control-Token") != panel._token:
                     self.send_error(HTTPStatus.FORBIDDEN)
                     return
@@ -133,6 +166,14 @@ class MH3ControlPanel:
                 self._send("{}", "application/json")
 
             def _send(self, body: str | bytes, content_type: str) -> None:
+                """Send a no-store success response with the supplied body.
+                :param body: Text or binary HTTP response body.
+                :type body: str | bytes
+                :param content_type: MIME type of the response body.
+                :type content_type: str
+                :return: None after writing the response.
+                :rtype: None
+                """
                 encoded = body.encode() if isinstance(body, str) else body
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", content_type)
@@ -142,8 +183,15 @@ class MH3ControlPanel:
                 self.wfile.write(encoded)
 
             def log_message(self, format: str, *args: Any) -> None:
+                """Suppress routine request logging from the local HTTP server.
+                :param format: HTTP server log message format.
+                :type format: str
+                :param args: Values supplied for the log message.
+                :type args: Any
+                :return: None without emitting a request log.
+                :rtype: None
+                """
                 return
-
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self._thread = threading.Thread(target=self._server.serve_forever, name="mh3-controls", daemon=True)
         self._thread.start()
@@ -152,6 +200,10 @@ class MH3ControlPanel:
             webbrowser.open(self.url)
 
     def close(self) -> None:
+        """Stop base motion and shut down the local dashboard server.
+        :return: None after server shutdown.
+        :rtype: None
+        """
         if self._server is None:
             return
         self.queue_drive(0.0, 0.0)
@@ -163,6 +215,10 @@ class MH3ControlPanel:
         self._thread = None
 
     def state(self) -> dict[str, Any]:
+        """Return a thread-safe snapshot for the dashboard.
+        :return: Joint positions, base command, camera status, and sim time.
+        :rtype: dict[str, Any]
+        """
         with self._lock:
             return {
                 "joints": [
@@ -183,9 +239,19 @@ class MH3ControlPanel:
 
     @property
     def _camera_feed_names(self) -> set[str]:
+        """List available dashboard camera feed identifiers.
+        :return: Source-qualified RGB and depth feed names.
+        :rtype: set[str]
+        """
         return {f"{source}-{feed}" for source in self._camera_pairs for feed in ("left-rgb", "right-rgb", "depth")}
 
     def camera_frame(self, name: str) -> bytes | None:
+        """Return a cached encoded camera frame and mark it requested.
+        :param name: Source-qualified dashboard feed name.
+        :type name: str
+        :return: Encoded image bytes, or None before the first render.
+        :rtype: bytes | None
+        """
         if name not in self._camera_feed_names:
             raise KeyError(f"Unknown camera feed: {name}")
         with self._lock:
@@ -194,12 +260,28 @@ class MH3ControlPanel:
 
     @staticmethod
     def _encode_rgb(rgb: np.ndarray) -> bytes:
+        """Encode an RGB image as a JPEG for the dashboard.
+        :param rgb: RGB image array.
+        :type rgb: np.ndarray
+        :return: JPEG image bytes.
+        :rtype: bytes
+        """
         output = BytesIO()
         Image.fromarray(np.asarray(rgb, dtype=np.uint8)).save(output, format="JPEG", quality=80)
         return output.getvalue()
 
     @staticmethod
     def _encode_depth(depth: np.ndarray, near_m: float, far_m: float) -> bytes:
+        """Encode metric depth as a grayscale dashboard preview.
+        :param depth: Metric depth image array.
+        :type depth: np.ndarray
+        :param near_m: Camera near clipping distance in metres.
+        :type near_m: float
+        :param far_m: Camera far clipping distance in metres.
+        :type far_m: float
+        :return: Grayscale PNG image bytes.
+        :rtype: bytes
+        """
         values = np.asarray(depth)
         display_far = min(far_m, 5.0)
         valid = np.isfinite(values) & (values > 0.0) & (values < far_m)
@@ -212,6 +294,12 @@ class MH3ControlPanel:
         return output.getvalue()
 
     def _render_camera_frames(self, simulation: MH3Simulation) -> None:
+        """Refresh encoded head and base feeds on the simulation thread.
+        :param simulation: Simulation that owns the Genesis cameras.
+        :type simulation: MH3Simulation
+        :return: None after caching the available camera feeds.
+        :rtype: None
+        """
         frames = {}
         for source, (left_name, right_name) in self._camera_pairs.items():
             left = simulation.capture_camera(left_name, rgb=True, depth=True)
@@ -231,6 +319,12 @@ class MH3ControlPanel:
             self._camera_error = None
 
     def queue_positions(self, targets: dict[str, Any]) -> None:
+        """Validate and queue public joint position targets.
+        :param targets: Targets keyed by participant-facing joint name.
+        :type targets: dict[str, Any]
+        :return: None after queuing bounded targets.
+        :rtype: None
+        """
         if not isinstance(targets, dict):
             raise TypeError("targets must be an object keyed by joint name")
         clean: dict[str, float] = {}
@@ -246,6 +340,14 @@ class MH3ControlPanel:
             self._pending_positions.update(clean)
 
     def queue_drive(self, linear: Any, angular: Any) -> None:
+        """Queue a finite base drive command and refresh its deadman timer.
+        :param linear: Forward speed in metres per second.
+        :type linear: Any
+        :param angular: Yaw speed in radians per second.
+        :type angular: Any
+        :return: None after queuing the base command.
+        :rtype: None
+        """
         linear, angular = float(linear), float(angular)
         if not math.isfinite(linear) or not math.isfinite(angular):
             raise ValueError("Drive commands must be finite")
@@ -256,11 +358,21 @@ class MH3ControlPanel:
             self._drive_received_at = time.monotonic()
 
     def queue_home(self) -> None:
+        """Queue home positions for every joint and stop base motion.
+        :return: None after queuing the home and stop commands.
+        :rtype: None
+        """
         with self._lock:
             self._pending_positions.update(self._home)
         self.queue_drive(0.0, 0.0)
 
     def update(self, simulation: MH3Simulation) -> None:
+        """Apply queued commands and refresh dashboard state after a step.
+        :param simulation: Simulation invoking this registered step hook.
+        :type simulation: MH3Simulation
+        :return: None after applying commands and updating previews.
+        :rtype: None
+        """
         now = time.monotonic()
         with self._lock:
             positions = self._pending_positions
@@ -297,30 +409,23 @@ class MH3ControlPanel:
             finally:
                 self._last_camera_render_at = time.monotonic()
 
-
 def _html(token: str, max_linear: float, max_angular: float) -> str:
+    """Render dashboard HTML with drive limits and a private command token.
+    :param token: Per-server token required for command POST requests.
+    :type token: str
+    :param max_linear: Maximum forward speed in metres per second.
+    :type max_linear: float
+    :param max_angular: Maximum yaw speed in radians per second.
+    :type max_angular: float
+    :return: Complete dashboard HTML document.
+    :rtype: str
+    """
     linear_step = max_linear / 12.0
     angular_step = max_angular / 20.0
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MH3 Controls</title><style>
-:root{{--bg:#0b1118;--panel:#151e29;--line:#29384a;--text:#e9f0f7;--muted:#8fa2b7;--accent:#48b6ff;--danger:#ff5c6c}}
-*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif}}
-header{{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:16px;padding:14px 20px;background:#0f1721;border-bottom:1px solid var(--line)}}
-h1{{font-size:18px;margin:0}}#status{{color:var(--muted)}}main{{display:grid;grid-template-columns:300px 1fr;gap:16px;padding:16px}}
-.card{{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}}h2{{font-size:15px;margin:0 0 14px}}
-.workspace{{display:grid;gap:16px;min-width:0}}.camera-row{{margin-top:16px}}.camera-row h3{{font-size:13px;margin:0 0 10px}}
-.camera-grid{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}}.camera-grid figure{{margin:0;min-width:0}}
-.camera-grid img{{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:#0e1620;border-radius:6px}}
-.camera-grid figcaption{{margin-top:6px;color:var(--muted);font-size:12px}}
-.drive-grid{{display:grid;grid-template-columns:repeat(3,64px);gap:8px;justify-content:center;margin:14px 0}}
-button{{border:1px solid #3b526a;background:#223044;color:var(--text);border-radius:8px;padding:11px;cursor:pointer}}
-button:hover{{background:#2b4057}}button.stop{{background:#4a2028;border-color:#883945}}button.home{{width:100%;margin-top:8px}}
-.speed label{{display:grid;grid-template-columns:90px 1fr 48px;align-items:center;gap:8px;margin:8px 0;color:var(--muted)}}
-#joint-groups{{display:grid;grid-template-columns:repeat(auto-fit,minmax(390px,1fr));gap:16px}}.joint-row{{display:grid;grid-template-columns:170px 1fr 72px;gap:10px;align-items:center;margin:8px 0}}
-.joint-row span{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c8d5e3}}input[type=range]{{width:100%;accent-color:var(--accent)}}
-input[type=number]{{width:72px;background:#0e1620;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px}}
-.hint{{color:var(--muted);font-size:12px;line-height:1.5}}@media(max-width:1000px){{.camera-grid{{grid-template-columns:1fr}}}}@media(max-width:800px){{main{{grid-template-columns:1fr}}#joint-groups{{grid-template-columns:1fr}}}}
+{STYLE}
 </style></head><body><header><h1>MH3 Control Panel</h1><span id="status">Connecting…</span></header><main>
 <section class="card"><h2>Base drive</h2><div class="speed">
 <label>Linear<input id="linear" type="range" min="{linear_step}" max="{max_linear}" step="{linear_step}" value="{max_linear}"><output>{max_linear:.2f}</output></label>
@@ -331,17 +436,6 @@ input[type=number]{{width:72px;background:#0e1620;color:var(--text);border:1px s
 <div class="camera-row" id="head-cameras"><h3>Head cameras</h3><div class="camera-grid"><figure><img id="head-left-rgb" alt="Head left RGB camera feed"><figcaption>Left RGB</figcaption></figure><figure><img id="head-right-rgb" alt="Head right RGB camera feed"><figcaption>Right RGB</figcaption></figure><figure><img id="head-depth" alt="Head depth camera feed"><figcaption>Left camera depth</figcaption></figure></div></div>
 <div class="camera-row" id="base-cameras"><h3>Base cameras</h3><div class="camera-grid"><figure><img id="base-left-rgb" alt="Base left RGB camera feed"><figcaption>Left RGB</figcaption></figure><figure><img id="base-right-rgb" alt="Base right RGB camera feed"><figcaption>Right RGB</figcaption></figure><figure><img id="base-depth" alt="Base depth camera feed"><figcaption>Left camera depth</figcaption></figure></div></div><p class="hint" id="camera-status">Waiting for camera frames… Near depth is bright; beyond 5 m is dark.</p></section>
 <section id="joint-groups"></section></div></main><script>
-const TOKEN={json.dumps(token)};let built=false;let drive='stop';const controls=new Map();
-const post=(path,body)=>fetch(path,{{method:'POST',headers:{{'Content-Type':'application/json','X-Control-Token':TOKEN}},body:JSON.stringify(body)}});
-function group(name){{if(/^left_[1-7]$/.test(name))return'Left arm';if(/^right_[1-7]$/.test(name))return'Right arm';if(name.startsWith('head_'))return'Head';if(name.startsWith('left_'))return'Left hand';if(name.startsWith('right_'))return'Right hand';return'Other joints';}}
-function build(joints){{const root=document.querySelector('#joint-groups');const groups={{}};for(const j of joints){{const g=group(j.name);if(!groups[g]){{const card=document.createElement('div');card.className='card';card.innerHTML=`<h2>${{g}}</h2>`;groups[g]=card;root.append(card)}}const row=document.createElement('label');row.className='joint-row';row.innerHTML=`<span title="${{j.name}}">${{j.name}}</span><input type="range" min="${{j.minimum}}" max="${{j.maximum}}" step="0.01" value="${{j.position}}"><input type="number" min="${{j.minimum}}" max="${{j.maximum}}" step="0.01" value="${{j.position.toFixed(2)}}">`;const slider=row.children[1],number=row.children[2],control={{slider,number,home:j.home,editing:false}};controls.set(j.name,control);let timer;const send=v=>{{v=Number(v);slider.value=v;number.value=v.toFixed(2);clearTimeout(timer);timer=setTimeout(()=>post('/api/joints',{{targets:{{[j.name]:v}}}}),35)}};slider.onpointerdown=()=>control.editing=true;slider.onpointerup=slider.onpointercancel=()=>control.editing=false;slider.oninput=()=>send(slider.value);number.onfocus=()=>control.editing=true;number.onblur=()=>control.editing=false;number.onchange=()=>send(number.value);groups[g].append(row)}}built=true}}
-function sync(joints){{for(const j of joints){{const c=controls.get(j.name);if(c&&!c.editing){{c.slider.value=j.position;c.number.value=j.position.toFixed(2)}}}}}}
-const cameraStatus=document.querySelector('#camera-status');let cameraSources=[],feedsBusy=false;
-async function poll(){{try{{const s=await fetch('/api/state',{{cache:'no-store'}}).then(r=>r.json());if(!built)build(s.joints);else sync(s.joints);document.querySelector('#status').textContent=`Connected · ${{s.sim_time.toFixed(2)}} s`;cameraSources=s.camera_sources;for(const source of ['head','base'])document.getElementById(source+'-cameras').hidden=!cameraSources.includes(source);cameraStatus.textContent=s.camera_error||(!cameraSources.length?'No stereo camera pairs configured':'Live camera feeds · near depth bright, beyond 5 m dark');}}catch(e){{document.querySelector('#status').textContent='Disconnected';cameraStatus.textContent='Camera feeds disconnected'}}}}setInterval(poll,250);poll();
-async function refreshCameraFeeds(){{if(document.hidden||!cameraSources.length||feedsBusy)return;feedsBusy=true;try{{const names=cameraSources.flatMap(source=>['left-rgb','right-rgb','depth'].map(feed=>source+'-'+feed));await Promise.all(names.map(async name=>{{const response=await fetch('/api/camera/'+name,{{cache:'no-store'}});if(!response.ok)return;const blob=await response.blob();const img=document.getElementById(name),previous=img.dataset.objectUrl;const url=URL.createObjectURL(blob);img.src=url;img.dataset.objectUrl=url;if(previous)URL.revokeObjectURL(previous)}}))}}catch(e){{cameraStatus.textContent='Waiting for camera frames…'}}finally{{feedsBusy=false}}}}setInterval(refreshCameraFeeds,500);
-for(const id of ['linear','angular']){{const el=document.querySelector('#'+id);el.oninput=()=>el.nextElementSibling.value=Number(el.value).toFixed(2)}}
-function command(kind){{drive=kind;const v=Number(document.querySelector('#linear').value),w=Number(document.querySelector('#angular').value);const map={{forward:[v,0],back:[-v,0],left:[0,w],right:[0,-w],stop:[0,0]}};post('/api/drive',{{linear:map[kind][0],angular:map[kind][1]}})}}
-for(const b of document.querySelectorAll('[data-drive]')){{b.onpointerdown=e=>{{e.preventDefault();command(b.dataset.drive)}};b.onpointerup=b.onpointercancel=b.onpointerleave=()=>{{if(drive===b.dataset.drive)command('stop')}}}}
-setInterval(()=>{{if(drive!=='stop')command(drive)}},100);
-const keys={{w:'forward',s:'back',a:'left',d:'right'}};window.onkeydown=e=>{{if(e.repeat||!keys[e.key.toLowerCase()]||/INPUT/.test(e.target.tagName))return;command(keys[e.key.toLowerCase()])}};window.onkeyup=e=>{{if(keys[e.key.toLowerCase()]===drive)command('stop')}};window.onblur=()=>command('stop');document.querySelector('#home').onclick=()=>{{for(const c of controls.values()){{c.editing=false;c.slider.value=c.home;c.number.value=c.home.toFixed(2)}}post('/api/home',{{}})}};
+const TOKEN={json.dumps(token)};
+{SCRIPT}
 </script></body></html>"""

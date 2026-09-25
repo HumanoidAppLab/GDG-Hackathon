@@ -1,3 +1,4 @@
+"""Load and validate the MH3 simulation and camera configuration."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -8,10 +9,28 @@ import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-
 @dataclass(frozen=True)
 class CameraConfig:
-    """A Genesis camera mounted to a rigid MH3 link."""
+    """Describe a Genesis camera mounted to a rigid MH3 link.
+    :param name: Public camera identifier.
+    :type name: str
+    :param parent_link: Public name of the mounting link.
+    :type parent_link: str
+    :param transform: Homogeneous camera pose relative to the mounting link.
+    :type transform: tuple[tuple[float, float, float, float], ...]
+    :param width: Image width in pixels.
+    :type width: int
+    :param height: Image height in pixels.
+    :type height: int
+    :param vertical_fov_deg: Vertical field of view in degrees.
+    :type vertical_fov_deg: float
+    :param near_m: Near clipping distance in metres.
+    :type near_m: float
+    :param far_m: Far clipping distance in metres.
+    :type far_m: float
+    :return: Camera configuration.
+    :rtype: CameraConfig
+    """
 
     name: str
     parent_link: str
@@ -24,12 +43,62 @@ class CameraConfig:
 
     @property
     def resolution(self) -> tuple[int, int]:
+        """Return the image width and height in pixels.
+        :return: Width and height in pixels.
+        :rtype: tuple[int, int]
+        """
         return self.width, self.height
-
 
 @dataclass(frozen=True)
 class SimulatorConfig:
-    """Configuration for the ROS-free MH3 hackathon simulation."""
+    """Hold the ROS-free MH3 scene, actuator, and sensor settings.
+    :param robot_usd: Path to the bundled MH3 USD articulation.
+    :type robot_usd: Path
+    :param backend: Genesis compute backend selection.
+    :type backend: str
+    :param dt: Physics time step in seconds.
+    :type dt: float
+    :param realtime: Pace physics to wall time when True.
+    :type realtime: bool
+    :param show_viewer: Show the Genesis scene viewer when True.
+    :type show_viewer: bool
+    :param gravity: World gravity vector in metres per second squared.
+    :type gravity: tuple[float, float, float]
+    :param spawn_position: Robot spawn translation in metres.
+    :type spawn_position: tuple[float, float, float]
+    :param spawn_euler_deg: Robot spawn orientation in Euler degrees.
+    :type spawn_euler_deg: tuple[float, float, float]
+    :param position_kp: Default joint position proportional gain.
+    :type position_kp: float
+    :param position_kv: Default joint position damping gain.
+    :type position_kv: float
+    :param slider_position_kp: Torso lift position proportional gain.
+    :type slider_position_kp: float
+    :param slider_position_kv: Torso lift position damping gain.
+    :type slider_position_kv: float
+    :param slider_max_velocity_mps: Maximum torso lift speed in metres per second.
+    :type slider_max_velocity_mps: float
+    :param slider_max_reference_lead_m: Maximum lift reference lead in metres.
+    :type slider_max_reference_lead_m: float
+    :param slider_max_force_n: Maximum torso lift force in newtons.
+    :type slider_max_force_n: float
+    :param wheel_radius_m: Driven-wheel radius in metres.
+    :type wheel_radius_m: float
+    :param wheel_separation_m: Separation between driven wheels in metres.
+    :type wheel_separation_m: float
+    :param max_linear_velocity_mps: Maximum base forward speed in metres per second.
+    :type max_linear_velocity_mps: float
+    :param max_angular_velocity_radps: Maximum base yaw speed in radians per second.
+    :type max_angular_velocity_radps: float
+    :param drive_command_timeout_s: Dashboard base-drive deadman timeout in seconds.
+    :type drive_command_timeout_s: float
+    :param initial_positions: Startup positions keyed by public joint name.
+    :type initial_positions: dict[str, float]
+    :param cameras: Mounted camera configurations.
+    :type cameras: tuple[CameraConfig, ...]
+    :return: Simulator configuration with participant-facing joint and link names.
+    :rtype: SimulatorConfig
+    """
 
     robot_usd: Path = PROJECT_ROOT / "assets/MH3.genesis.usda"
     backend: str = "auto"
@@ -56,28 +125,34 @@ class SimulatorConfig:
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> SimulatorConfig:
+        """Load a simulator configuration from YAML.
+        :param path: Configuration file to load.
+        :type path: str | Path
+        :return: Validated configuration with a resolved robot USD path.
+        :rtype: SimulatorConfig
+        """
         config_path = Path(path).expanduser().resolve()
         raw: dict[str, Any] = yaml.safe_load(config_path.read_text()) or {}
-
         robot_usd = Path(raw.pop("robot_usd", cls.robot_usd)).expanduser()
         if not robot_usd.is_absolute():
             robot_usd = (config_path.parent / robot_usd).resolve()
-
-        cameras = []
+        cameras: list[CameraConfig] = []
         for item in raw.pop("cameras", ()):
             item = dict(item)
             item["transform"] = tuple(tuple(float(value) for value in row) for row in item["transform"])
             cameras.append(CameraConfig(**item))
-
         for key in ("gravity", "spawn_position", "spawn_euler_deg"):
             if key in raw:
                 raw[key] = tuple(float(value) for value in raw[key])
-
         config = cls(robot_usd=robot_usd, cameras=tuple(cameras), **raw)
         config.validate()
         return config
 
     def validate(self) -> None:
+        """Reject invalid scene, motion, and camera settings.
+        :return: None after all settings pass validation.
+        :rtype: None
+        """
         if not self.robot_usd.is_file():
             raise FileNotFoundError(f"MH3 USD does not exist: {self.robot_usd}")
         if self.robot_usd.suffix.lower() not in {".usd", ".usda", ".usdc", ".usdz"}:

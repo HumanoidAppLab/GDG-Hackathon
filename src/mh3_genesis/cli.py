@@ -1,3 +1,4 @@
+"""Provide the command-line entry point for the MH3 starter scene."""
 from __future__ import annotations
 
 import argparse
@@ -10,6 +11,10 @@ from .simulator import MH3Simulation
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Create the simulator command-line argument parser.
+    :return: Parser with scene, backend, and dashboard options.
+    :rtype: argparse.ArgumentParser
+    """
     parser = argparse.ArgumentParser(description="ROS-free MH3 Genesis hackathon starter")
     parser.add_argument("--config", type=Path, default=PROJECT_ROOT / "config/mh3.yaml")
     parser.add_argument("--headless", action="store_true", help="Disable the interactive viewer")
@@ -19,8 +24,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-controls", action="store_true", help="Do not launch the browser control panel")
     return parser
 
-
 def run(args: argparse.Namespace) -> int:
+    """Build and run the configured simulator until completion or interruption.
+    :param args: Parsed command-line arguments.
+    :type args: argparse.Namespace
+    :return: Zero after the simulator exits cleanly.
+    :rtype: int
+    """
     config = SimulatorConfig.from_yaml(args.config)
     config = replace(
         config,
@@ -43,6 +53,9 @@ def run(args: argparse.Namespace) -> int:
             control_panel.close()
     return 0
 
-
 def main() -> None:
+    """Exit the process with the simulator command result.
+    :return: None because the process exits.
+    :rtype: None
+    """
     raise SystemExit(run(build_parser().parse_args()))
