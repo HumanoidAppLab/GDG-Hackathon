@@ -1,23 +1,16 @@
-# Install the project and a suitable PyTorch backend in the local Python environment.
+# Bootstrap uv/Python, install the frozen release, and verify the MH3.
 $ErrorActionPreference = "Stop"
-
+if (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 Set-Location $PSScriptRoot
-
-# The `.python-version` file selects Python 3.13.
-# Genesis and PyTorch are installed locally without reusing system packages.
-& uv sync --no-install-package torch
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
+if ([IntPtr]::Size -ne 8) { throw "Open 64-bit Windows PowerShell, then rerun setup." }
+$architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+if ($architecture -ne "X64") {
+    throw "This release requires Windows x64. Native Windows ARM and 32-bit Windows lack the required wheels."
 }
-
-& uv pip install --reinstall-package torch "torch>=2.14" --torch-backend=auto
-if ($LASTEXITCODE -ne 0) {
-    Write-Warning "Automatic PyTorch accelerator install failed; falling back to the locked platform wheel."
-    & uv sync
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
-    }
-}
-
-& uv run --no-sync python -c 'import genesis, torch; from pxr import Usd; print(f"Genesis {genesis.__version__}; PyTorch {torch.__version__}; CUDA={torch.cuda.is_available()}; HIP={torch.version.hip}; MPS={torch.backends.mps.is_available()}; USD={Usd.__name__}")'
+. "$PSScriptRoot\uv.ps1"
+Initialize-Mh3Uv
+$pythonVersion = (Get-Content "$PSScriptRoot\.python-version" -Raw).Trim()
+& $Mh3Uv run --no-project --python $pythonVersion python setup.py @args
 exit $LASTEXITCODE

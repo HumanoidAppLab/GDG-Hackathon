@@ -2,5 +2,7 @@
 $ErrorActionPreference = "Stop"
 
 Set-Location $PSScriptRoot
-& uv run --no-sync mh3-genesis @args
+. "$PSScriptRoot\uv.ps1"
+if (-not (Find-Mh3Uv)) { throw "Run .\setup.ps1 first." }
+& $Mh3Uv run --no-sync mh3-genesis @args
 exit $LASTEXITCODE

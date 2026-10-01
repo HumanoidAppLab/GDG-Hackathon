@@ -1,11 +1,12 @@
 output/
 .agents/
 .idea/
-.venv/
 .pytest_cache/
 .ruff_cache/
+.setup/
+.uv/
+.venv/
 .vscode/
 .vs/
-.vscode/
 __pycache__/
 *.py[cod]
