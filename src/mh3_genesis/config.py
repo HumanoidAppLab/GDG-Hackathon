@@ -100,7 +100,7 @@ class SimulatorConfig:
     :rtype: SimulatorConfig
     """
 
-    robot_usd: Path = PROJECT_ROOT / "assets/MH3.genesis.usda"
+    robot_usd: Path = PROJECT_ROOT / "assets/MH3.usd"
     backend: str = "auto"
     dt: float = 0.01
     realtime: bool = True

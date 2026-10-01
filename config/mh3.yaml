@@ -1,5 +1,5 @@
 # The starter scene contains the MH3 and a floor plane at z=0.
-robot_usd: ../assets/MH3.genesis.usda
+robot_usd: ../assets/MH3.usd
 backend: auto
 dt: 0.01
 realtime: true
