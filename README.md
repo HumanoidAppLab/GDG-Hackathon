@@ -30,6 +30,8 @@ The torso slider travels from 0 to 0.3 m at up to 0.008 m/s when commanded from 
 
 Each hand exposes six controls: two thumb joints and one joint for each other finger. The remaining finger segments follow their corresponding control automatically, so they do not appear as separate dashboard sliders or public joint names.
 
+All hand controls use radians, with zero representing the fully open pose. The four finger controls close through 1.57 rad; the thumb controls travel through 1.6 and 0.45 rad. The bundled USD's hand transforms are aligned at joint zero for Genesis, including the fingertip sensors. To regenerate that alignment from the bundled joint anchors, run `uv run python tools/normalize_hand_pose.py`.
+
 Public joint names are short and consistent: `left_1` through `left_7` and `right_1` through `right_7` for the arms, `left_index` and similar names for the fingers, `left_thumb_1`/`left_thumb_2` and their right-hand equivalents for the thumbs, plus `slider`, `head_yaw`, and `head_pitch`. Use `sim.joint_names` to see the full list.
 
 Links use the same readable style: `left_arm_1` through `left_arm_7` for arm segments, `left_gripper_base` for the left gripper's base, and `left_index_tip` for the fingertip; right-side names follow the same pattern. Use `sim.link_names` to discover all links before passing one to `sim.get_link()` or `sim.solve_ik()`.
