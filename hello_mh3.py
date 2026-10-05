@@ -46,12 +46,15 @@ def main() -> None:
     print(f"Robot links ({len(sim.link_names)}): {sim.link_names}")
     print(f"Available cameras ({len(sim.camera_names)}): {sim.camera_names}")
 
-    # Set initial joint positions for the head and arms.
+    # Instantly set the torso slider position so the simulation starts at that height without waiting.
+    # Note: sim.home_positions preserves the true neutral startup home pose, so returning home still works properly.
+    sim.set_joint_positions({"slider": 0.1}, immediate=True)
+
+    # Set dynamic joint position targets for the head (actuated with physics once stepping begins).
     sim.set_joint_positions(
         {
             "head_yaw": 0.2,
             "head_pitch": -0.2,
-            "slider": 0.1,
         }
     )
 
