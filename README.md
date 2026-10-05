@@ -20,7 +20,7 @@ This repository is a self-contained, Python-based starting point for building pr
 ### Installation & Running
 
 > [!NOTE]
->  Initial setup may take a few minutes while kernels compile and the environment is verified.  
+> Initial setup may take a few minutes while kernels compile and the environment is verified.  
 
 **Linux / Apple Silicon macOS:**
 ```bash
@@ -35,7 +35,7 @@ This repository is a self-contained, Python-based starting point for building pr
 ```
 
 > [!IMPORTANT]
->  If Windows blocks script execution, run: `powershell -ExecutionPolicy Bypass -File .\setup.ps1`
+> If Windows blocks script execution, run: `powershell -ExecutionPolicy Bypass -File .\setup.ps1`
 
 **Common options:**
 - Force CPU physics: `./setup.sh --cpu` (or `.\setup.ps1 --cpu`)
@@ -45,6 +45,9 @@ This repository is a self-contained, Python-based starting point for building pr
 ## Upgrading
 
 To update dependencies to the latest [Genesis World](https://genesis-embodied-ai.github.io "Genesis World") release:
+
+> [!NOTE]
+> In most cases you should only try upgrading if a newer release of [Genesis World](https://genesis-embodied-ai.github.io "Genesis World") has a feature or bug fix you need. Before upgrading, back up your current project.
 
 **Linux / Apple Silicon macOS:**
 ```bash
@@ -60,39 +63,59 @@ Use `--dry-run` to preview changes or `--lock-only` to update lockfiles without 
 
 ## Browser dashboard
 
-The dashboard starts automatically in your default browser when `run.sh` or `run.ps1` starts the simulator. Hold the arrow buttons or W/A/S/D to drive the base, which defaults to the configured maximum linear and angular speeds; lower either speed slider for finer control. Use the joint sliders or numeric inputs to pose the arms, head, and hands, and select **Return all joints home** to restore the configured startup pose.
+The dashboard starts automatically in your default browser when you launch the simulator with `./run.sh` or `.\run.ps1`.
 
-The camera panel shows the head's left RGB, right RGB, and depth feeds above the matching base camera feeds. In each depth view, nearby surfaces are bright and distances beyond 5 m are dark; all six feeds update while the dashboard is open.
+### Controls & feeds
+- **Base drive:** Hold on-screen buttons or use **W / A / S / D** (or arrow keys) to drive the base. Speed sliders adjust maximum linear and angular rates. Releasing a control stops base motion automatically.
+- **Joint controls:** Adjust sliders or enter numeric values to pose joints. Click **Return all joints home** to restore the default startup configuration.
+- **Camera feeds:** Displays live views for head and base cameras (left RGB, right RGB, and depth). In depth views, close surfaces are bright and distances beyond 5 m are dark.
 
-The torso slider travels from 0 to 0.3 m at up to 0.008 m/s when commanded from the dashboard or with `sim.set_joint_positions()`. Its position reference stays close to measured motion, and the simulator limits the lift force; these values can be adjusted in `config/mh3.yaml`. All other controllable joints hold their startup poses until commanded.
+### Enabling, disabling & embedding
+- **Disable dashboard:** Pass `--no-controls` to your run script:
+  ```bash
+  ./run.sh --no-controls        # Linux / macOS
+  .\run.ps1 --no-controls       # Windows
+  ```
+- **Stopping:** Closing the browser tab only closes the page; press `Ctrl+C` in your terminal to stop the simulator.
+- **Embedding in custom scripts:**
+  ```python
+  from mh3_genesis import MH3ControlPanel, MH3Simulation, SimulatorConfig
 
-Each hand exposes six controls: two thumb joints and one joint for each other finger. The remaining finger segments follow their corresponding control automatically, so they do not appear as separate dashboard sliders or public joint names.
+  sim = MH3Simulation(SimulatorConfig.from_yaml("config/mh3.yaml")).build()
+  panel = MH3ControlPanel(sim)
+  panel.start()  # Use open_browser=False to print the local URL without opening a browser tab
+  sim.add_step_hook(panel.update)
 
-All hand controls use radians, with zero representing the fully open pose. The four finger controls close through 1.57 rad; the thumb controls travel through 1.6 and 0.45 rad. The bundled USD's hand transforms are aligned at joint zero for Genesis, including the fingertip sensors.
+  try:
+      sim.run()
+  finally:
+      panel.close()
+  ```
+  The dashboard listens locally on `127.0.0.1` on an automatically assigned port. Commands are queued and applied safely on the simulation thread during `panel.update()`.
 
-Public joint names are short and consistent: `left_1` through `left_7` and `right_1` through `right_7` for the arms, `left_index` and similar names for the fingers, `left_thumb_1`/`left_thumb_2` and their right-hand equivalents for the thumbs, plus `slider`, `head_yaw`, and `head_pitch`. Use `sim.joint_names` to see the full list.
+## Robot joints & links
 
-Links use the same readable style: `left_arm_1` through `left_arm_7` for arm segments, `left_gripper_base` for the left gripper's base, and `left_index_tip` for the fingertip; right-side names follow the same pattern. Use `sim.link_names` to discover all links before passing one to `sim.get_link()` or `sim.solve_ik()`.
+### Units
+- **Revolute joints (arms, head, hands):** Radians (`rad`).
+- **Prismatic joints (`slider`):** Metres (`m`).
+- **Mobile base velocities:** Metres per second (`m/s`) for linear speed, radians per second (`rad/s`) for angular speed.
 
-Pass `--no-controls` to the run script to start without the dashboard. Closing the browser tab only closes the page; stop the simulator with Ctrl+C, or use `panel.close()` when embedding the dashboard in a custom script.
+### Joint names & limits
+Inspect available joints and limits via `sim.joint_names` and `sim.get_joint_limits()`:
 
-To add the dashboard to a custom control script, create it after `build()`, register its `update` method as a step hook, and close it when the simulation exits:
+- **Torso lift:** `slider` (travels from 0.0 to 0.3 m).
+- **Head:** `head_yaw`, `head_pitch`.
+- **Arms (7 DOF each):** `left_1` through `left_7` and `right_1` through `right_7`.
+- **Hands (6 controls per hand):**
+  - **Fingers:** `left_index`, `left_middle`, `left_ring`, `left_little` (and matching `right_*` joints). Zero radians represents fully open; joints close through 1.57 rad. Dependent finger joints follow these root controls automatically via mimic constraints.
+  - **Thumbs:** `left_thumb_1` (up to 1.6 rad) and `left_thumb_2` (up to 0.45 rad), along with their `right_*` counterparts.
 
-```python
-from mh3_genesis import MH3ControlPanel, MH3Simulation, SimulatorConfig
-
-sim = MH3Simulation(SimulatorConfig.from_yaml("config/mh3.yaml")).build()
-panel = MH3ControlPanel(sim)
-panel.start()  # Use open_browser=False to print the local URL without opening it.
-sim.add_step_hook(panel.update)
-
-try:
-    sim.run()
-finally:
-    panel.close()
-```
-
-The dashboard listens only on `127.0.0.1` and chooses an available port automatically. Its commands are queued by the web server and applied safely by `panel.update()` on the simulation thread.
+### Link names
+Discover all link identifiers using `sim.link_names` before passing one to `sim.get_link()` or `sim.solve_ik()`:
+- **Arm segments:** `left_arm_1` through `left_arm_7` (and `right_arm_1` through `right_arm_7`).
+- **Gripper bases:** `left_gripper_base`, `right_gripper_base`.
+- **Fingertips:** `left_index_tip`, `left_middle_tip`, `left_thumb_tip`, etc.
+- **Torso & head:** `torso_base`, `head_base`, `head_camera_mount`.
 
 ## Using the API
 
