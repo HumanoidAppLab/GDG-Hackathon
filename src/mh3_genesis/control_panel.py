@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import math
@@ -190,7 +191,11 @@ class MH3ControlPanel:
                     except (KeyError, ValueError, RuntimeError) as error:
                         self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
                         return
-                # Return binary JPEG or PNG frames for requested camera streams.
+                # Return all cached camera frames as a consolidated base64 payload.
+                elif self.path == "/api/camera-frames":
+                    frames = panel.all_camera_frames()
+                    self._send(json.dumps(frames), "application/json")
+                # Return individual binary JPEG frames for backward compatibility.
                 elif self.path.startswith("/api/camera/"):
                     name = self.path.removeprefix("/api/camera/")
                     # Reject unknown camera feed identifiers with an HTTP 404 response.
@@ -202,7 +207,7 @@ class MH3ControlPanel:
                     if frame is None:
                         self.send_error(HTTPStatus.SERVICE_UNAVAILABLE, "Camera frame is not ready")
                         return
-                    self._send(frame, "image/png" if name.endswith("-depth") else "image/jpeg")
+                    self._send(frame, "image/jpeg")
                 else:
                     self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -357,6 +362,20 @@ class MH3ControlPanel:
             self._last_camera_request_at = time.monotonic()
             return self._camera_frames.get(name)
 
+    def all_camera_frames(self) -> dict[str, str]:
+        """Return all cached camera frames as base64 data URLs.
+        :return: Mapping of feed names to base64 JPEG data URL strings.
+        :rtype: dict[str, str]
+        """
+        # Record access timestamp and snapshot latest encoded frame bytes under lock.
+        with self._lock:
+            self._last_camera_request_at = time.monotonic()
+            frames = dict(self._camera_frames)
+        # Encode raw JPEG bytes as base64 data URLs for batch JSON transport.
+        return {
+            name: f"data:image/jpeg;base64,{base64.b64encode(data).decode('ascii')}" for name, data in frames.items()
+        }
+
     @staticmethod
     def _encode_rgb(rgb: np.ndarray) -> bytes:
         """Encode an RGB image as a JPEG for the dashboard.
@@ -372,14 +391,14 @@ class MH3ControlPanel:
 
     @staticmethod
     def _encode_depth(depth: np.ndarray, near_m: float, far_m: float) -> bytes:
-        """Encode metric depth as a grayscale dashboard preview.
+        """Encode metric depth as a grayscale JPEG dashboard preview.
         :param depth: Metric depth image array.
         :type depth: np.ndarray
         :param near_m: Camera near clipping distance in metres.
         :type near_m: float
         :param far_m: Camera far clipping distance in metres.
         :type far_m: float
-        :return: Grayscale PNG image bytes.
+        :return: Grayscale JPEG image bytes.
         :rtype: bytes
         """
         values = np.asarray(depth)
@@ -391,9 +410,9 @@ class MH3ControlPanel:
         grayscale[valid] = np.clip((display_far - values[valid]) / (display_far - near_m) * 255.0, 0.0, 255.0).astype(
             np.uint8
         )
-        # Encode grayscale array as a compressed PNG image.
+        # Encode grayscale array as a compressed JPEG image.
         output = BytesIO()
-        Image.fromarray(grayscale).save(output, format="PNG")
+        Image.fromarray(grayscale).save(output, format="JPEG", quality=85)
         return output.getvalue()
 
     def _render_camera_frames(self, simulation: MH3Simulation) -> None:
@@ -636,8 +655,10 @@ class MH3ControlPanel:
         # Check whether an active client has requested camera frames in the last two seconds.
         with self._lock:
             camera_requested = now - self._last_camera_request_at < 2.0
-        # Render camera frames at a controlled frame rate if cameras are active and requested.
-        if self._camera_pairs and camera_requested and now - self._last_camera_render_at >= 0.4:
+        # Compute minimum render period from the configured dashboard framerate limit.
+        min_camera_interval = 1.0 / max(simulation.config.dashboard_camera_fps, 1.0)
+        # Render camera frames at the configured framerate if cameras are active and requested.
+        if self._camera_pairs and camera_requested and now - self._last_camera_render_at >= min_camera_interval:
             try:
                 self._render_camera_frames(simulation)
             except Exception as error:

@@ -58,6 +58,7 @@ wheel_radius_m: 0.1
 wheel_separation_m: 0.45
 max_linear_velocity_mps: 0.6
 max_angular_velocity_radps: 2.0
+dashboard_camera_fps: 20.0
 drive_command_timeout_s: 0.3
 
 # The ready home pose holds both forearms forward, levels the end effectors, and points the head forward.

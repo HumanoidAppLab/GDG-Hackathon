@@ -93,6 +93,8 @@ class SimulatorConfig:
     :type max_linear_velocity_mps: float
     :param max_angular_velocity_radps: Maximum base yaw speed in radians per second.
     :type max_angular_velocity_radps: float
+    :param dashboard_camera_fps: Maximum dashboard camera stream framerate in frames per second.
+    :type dashboard_camera_fps: float
     :param drive_command_timeout_s: Dashboard base-drive deadman timeout in seconds.
     :type drive_command_timeout_s: float
     :param enable_gravity_compensation: Enable analytic feedforward gravity compensation.
@@ -131,6 +133,7 @@ class SimulatorConfig:
     wheel_separation_m: float = 0.45
     max_linear_velocity_mps: float = 0.6
     max_angular_velocity_radps: float = 2.0
+    dashboard_camera_fps: float = 20.0
     drive_command_timeout_s: float = 0.3
     initial_positions: dict[str, float] = field(default_factory=dict)
     cameras: tuple[CameraConfig, ...] = ()
@@ -210,6 +213,9 @@ class SimulatorConfig:
         # Check that maximum linear and angular mobile base velocities are positive.
         if self.max_linear_velocity_mps <= 0.0 or self.max_angular_velocity_radps <= 0.0:
             raise ValueError("base velocity limits must be positive")
+        # Ensure the maximum dashboard camera streaming framerate is positive.
+        if self.dashboard_camera_fps <= 0.0:
+            raise ValueError("dashboard_camera_fps must be positive")
         # Check that the deadman switch timeout for drive commands is positive.
         if self.drive_command_timeout_s <= 0.0:
             raise ValueError("drive_command_timeout_s must be positive")

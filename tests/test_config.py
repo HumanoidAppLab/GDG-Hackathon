@@ -21,6 +21,7 @@ def test_load_default_config() -> None:
     assert config.robot_usd.is_file()
     assert config.dt == 0.01
     assert config.enable_gravity_compensation is True
+    assert config.dashboard_camera_fps == 20.0
     assert len(config.joint_kp) > 0
     assert len(config.joint_kv) > 0
     assert len(config.cameras) == 4
@@ -78,3 +79,7 @@ def test_config_validation_failures(tmp_path: Path) -> None:
     # Reject invalid joint-specific proportional gain.
     with pytest.raises(ValueError, match="joint_kp for 'left_1' must be strictly positive"):
         replace(base, joint_kp={"left_1": 0.0}).validate()
+
+    # Reject non-positive dashboard camera streaming framerate.
+    with pytest.raises(ValueError, match="dashboard_camera_fps must be positive"):
+        replace(base, dashboard_camera_fps=0.0).validate()

@@ -425,7 +425,7 @@ async function poll()
 }
 
 /**
- * Fetch every head and base camera feed while the dashboard is visible.
+ * Fetch every head and base camera feed in a single batch while the dashboard is visible.
  * @returns {Promise<void>} Available image elements receive their latest frames.
  */
 async function refreshCameraFeeds()
@@ -434,19 +434,14 @@ async function refreshCameraFeeds()
     feedsBusy = true;
     try
     {
-        const names = cameraSources.flatMap(source => ['left-rgb', 'right-rgb', 'depth'].map(feed => source + '-' + feed));
-        await Promise.all(names.map(async name =>
+        const response = await fetch('/api/camera-frames', {cache: 'no-store'});
+        if (!response.ok) return;
+        const frames = await response.json();
+        for (const [name, dataUrl] of Object.entries(frames))
         {
-            const response = await fetch('/api/camera/' + name, {cache: 'no-store'});
-            if (!response.ok) return;
-            const blob = await response.blob();
             const image = document.getElementById(name);
-            const previous = image.dataset.objectUrl;
-            const url = URL.createObjectURL(blob);
-            image.src = url;
-            image.dataset.objectUrl = url;
-            if (previous) URL.revokeObjectURL(previous);
-        }));
+            if (image && dataUrl) image.src = dataUrl;
+        }
     }
     catch (error)
     {
@@ -489,7 +484,17 @@ function resetHome()
 
 setInterval(poll, 250);
 poll();
-setInterval(refreshCameraFeeds, 500);
+
+async function cameraLoop()
+{
+    await refreshCameraFeeds();
+    setTimeout(cameraLoop, document.hidden ? 500 : 50);
+}
+cameraLoop();
+document.addEventListener('visibilitychange', () =>
+{
+    if (!document.hidden) refreshCameraFeeds();
+});
 for (const id of ['linear', 'angular'])
 {
     const input = document.querySelector('#' + id);
