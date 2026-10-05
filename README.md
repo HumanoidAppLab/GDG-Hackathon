@@ -1,6 +1,6 @@
 # MH3 Genesis Hackathon Starter
 
-This repository is a self-contained, Python-based starting point for building projects with the [Mirsee Robotics](https://mirsee.com "Mirsee Robotics Inc.") MH3 in [Genesis](https://genesis-embodied-ai.github.io/). It includes the simulated MH3, a default world with a floor, a browser dashboard, and a Python API for controlling and observing the robot.
+This repository is a self-contained, Python-based starting point for building projects with the [Mirsee Robotics](https://mirsee.com "Mirsee Robotics Inc.") MH3 in [Genesis World](https://genesis-embodied-ai.github.io "Genesis World"). It includes the simulated MH3, a default world with a floor, a browser dashboard, and a Python API for controlling and observing the robot.
 
 ## Setup and run
 
@@ -10,14 +10,17 @@ This repository is a self-contained, Python-based starting point for building pr
 - **Apple Silicon macOS** (macOS 14+)
 - **Windows 10+ x64**
 
-*(Intel Macs, ARM Linux/Windows, and 32-bit platforms are not supported.)*
+*Intel Macs, ARM Linux/Windows, and 32-bit platforms are not supported.*
 
 ### Prerequisites
 
 - **Linux:** `curl` or `wget`, plus graphics runtime libraries (`libgl1`, `libegl1`, `libglib2.0-0` on Ubuntu/Debian). On WSL2, ensure WSLg and updated GPU drivers are installed.
-- Working GPU drivers and OpenGL/EGL runtime (required for cameras and the viewer, even if physics runs on CPU). See [Genesis installation requirements](https://genesis-world.readthedocs.io/en/latest/user_guide/overview/installation.html).
+- Working GPU drivers and OpenGL/EGL runtime (required for cameras and the viewer, even if physics runs on CPU). See [Genesis installation requirements](https://genesis-world.readthedocs.io/en/latest/user_guide/overview/installation.html "Genesis World - Installation").
 
-### Installation & running
+### Installation & Running
+
+> [!NOTE]
+>  Initial setup may take a few minutes while kernels compile and the environment is verified.  
 
 **Linux / Apple Silicon macOS:**
 ```bash
@@ -31,8 +34,8 @@ This repository is a self-contained, Python-based starting point for building pr
 .\run.ps1
 ```
 
-> **Note:** Initial setup may take a few minutes while kernels compile and the environment is verified.  
-> *If Windows blocks script execution, run: `powershell -ExecutionPolicy Bypass -File .\setup.ps1`*
+> [!IMPORTANT]
+>  If Windows blocks script execution, run: `powershell -ExecutionPolicy Bypass -File .\setup.ps1`
 
 **Common options:**
 - Force CPU physics: `./setup.sh --cpu` (or `.\setup.ps1 --cpu`)
@@ -41,7 +44,7 @@ This repository is a self-contained, Python-based starting point for building pr
 
 ## Upgrading
 
-To update dependencies to the latest Genesis release:
+To update dependencies to the latest [Genesis World](https://genesis-embodied-ai.github.io "Genesis World") release:
 
 **Linux / Apple Silicon macOS:**
 ```bash
