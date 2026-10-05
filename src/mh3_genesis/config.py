@@ -131,20 +131,28 @@ class SimulatorConfig:
         :return: Validated configuration with a resolved robot USD path.
         :rtype: SimulatorConfig
         """
+        # Resolve the configuration file path to an absolute path.
         config_path = Path(path).expanduser().resolve()
+        # Parse the configuration YAML file into a raw dictionary.
         raw: dict[str, Any] = yaml.safe_load(config_path.read_text()) or {}
+        # Extract the robot USD path, defaulting to the class default if unspecified.
         robot_usd = Path(raw.pop("robot_usd", cls.robot_usd)).expanduser()
+        # Resolve relative USD paths against the directory containing the configuration file.
         if not robot_usd.is_absolute():
             robot_usd = (config_path.parent / robot_usd).resolve()
+        # Parse individual camera entries and cast transform matrices to nested tuples of floats.
         cameras: list[CameraConfig] = []
         for item in raw.pop("cameras", ()):
             item = dict(item)
             item["transform"] = tuple(tuple(float(value) for value in row) for row in item["transform"])
             cameras.append(CameraConfig(**item))
+        # Ensure 3D spatial vectors are converted to float tuples.
         for key in ("gravity", "spawn_position", "spawn_euler_deg"):
             if key in raw:
                 raw[key] = tuple(float(value) for value in raw[key])
+        # Construct the SimulatorConfig instance from parsed and resolved parameters.
         config = cls(robot_usd=robot_usd, cameras=tuple(cameras), **raw)
+        # Perform comprehensive consistency and bounds checks on all configured values.
         config.validate()
         return config
 
@@ -153,33 +161,47 @@ class SimulatorConfig:
         :return: None after all settings pass validation.
         :rtype: None
         """
+        # Confirm that the specified robot USD articulation asset exists on disk.
         if not self.robot_usd.is_file():
             raise FileNotFoundError(f"MH3 USD does not exist: {self.robot_usd}")
+        # Verify that the asset has a recognised Universal Scene Description file extension.
         if self.robot_usd.suffix.lower() not in {".usd", ".usda", ".usdc", ".usdz"}:
             raise ValueError("robot_usd must be a USD file")
+        # Validate that the selected compute backend is supported by Genesis.
         if self.backend not in {"auto", "cpu", "gpu", "cuda", "amdgpu", "metal"}:
             raise ValueError("backend must be one of: auto, cpu, gpu, cuda, amdgpu, metal")
+        # Ensure the simulation physics time step is strictly positive.
         if self.dt <= 0.0:
             raise ValueError("dt must be positive")
+        # Verify that standard joint position gains are non-negative and proportional gain is positive.
         if self.position_kp <= 0.0 or self.position_kv < 0.0:
             raise ValueError("joint position gains must be non-negative with positive kp")
+        # Verify that torso slider position gains are non-negative and proportional gain is positive.
         if self.slider_position_kp <= 0.0 or self.slider_position_kv < 0.0:
             raise ValueError("slider position gains must be non-negative with positive kp")
+        # Ensure slider velocity and reference lead bounds are positive.
         if self.slider_max_velocity_mps <= 0.0 or self.slider_max_reference_lead_m <= 0.0:
             raise ValueError("slider motion limits must be positive")
+        # Ensure the maximum force exerted by the torso lift is positive.
         if self.slider_max_force_n <= 0.0:
             raise ValueError("slider force limit must be positive")
+        # Ensure wheel radius and track separation are positive non-zero measurements.
         if self.wheel_radius_m <= 0.0 or self.wheel_separation_m <= 0.0:
             raise ValueError("wheel dimensions must be positive")
+        # Check that maximum linear and angular mobile base velocities are positive.
         if self.max_linear_velocity_mps <= 0.0 or self.max_angular_velocity_radps <= 0.0:
             raise ValueError("base velocity limits must be positive")
+        # Check that the deadman switch timeout for drive commands is positive.
         if self.drive_command_timeout_s <= 0.0:
             raise ValueError("drive_command_timeout_s must be positive")
+        # Ensure the gravity vector has exactly three coordinate components.
         if len(self.gravity) != 3:
             raise ValueError("gravity must contain three values")
+        # Ensure all configured camera identifiers are distinct.
         camera_names = [camera.name for camera in self.cameras]
         if len(camera_names) != len(set(camera_names)):
             raise ValueError("camera names must be unique")
+        # Validate matrix dimensions and output image dimensions for every camera.
         for camera in self.cameras:
             if len(camera.transform) != 4 or any(len(row) != 4 for row in camera.transform):
                 raise ValueError(f"camera {camera.name!r} transform must be 4x4")

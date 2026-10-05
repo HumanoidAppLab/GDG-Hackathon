@@ -33,10 +33,13 @@ def _public_joint_name(name: str) -> str:
     :return: Simplified public joint name.
     :rtype: str
     """
+    # Strip the trailing joint suffix from the USD name.
     name = name.removesuffix("_joint")
+    # Translate internal arm and hand naming prefixes into standard left and right identifiers.
     for prefix, replacement in (("L_link_", "left_"), ("R_link_", "right_"), ("L_", "left_"), ("R_", "right_")):
         if name.startswith(prefix):
             part = name[len(prefix) :]
+            # Drop the suffix from primary finger controls to provide intuitive public joint names.
             if prefix in ("L_", "R_") and part.startswith(("index_", "middle_", "ring_", "little_")):
                 part = part.removesuffix("_1")
             return replacement + part
@@ -49,6 +52,7 @@ def _public_link_name(name: str) -> str:
     :return: Simplified public link name.
     :rtype: str
     """
+    # Map special USD link identifiers to clean public link aliases.
     special = {
         "base_link_head": "head_base",
         "base_link_torso": "torso_base",
@@ -56,13 +60,17 @@ def _public_link_name(name: str) -> str:
     }
     if name in special:
         return special[name]
+    # Remove redundant link suffix.
     name = name.removesuffix("_link")
+    # Substitute USD prefixes with readable public names.
     for prefix, replacement in (("L_link_", "left_arm_"), ("R_link_", "right_arm_"), ("L_", "left_"), ("R_", "right_")):
         if name.startswith(prefix):
             name = replacement + name[len(prefix) :]
             break
+    # Correct spelling anomalies present in the underlying USD assets.
     name = name.replace("liitle", "little").replace("miidle", "middle")
     name = name.replace("_F_sensor", "_force_sensor")
+    # Replace end-effector acronyms with descriptive tip designations.
     return name.removesuffix("_ee") + "_tip" if name.endswith("_ee") else name
 
 def _select_genesis_backend(gs: Any, requested: str) -> Any:
@@ -74,6 +82,7 @@ def _select_genesis_backend(gs: Any, requested: str) -> Any:
     :return: Genesis backend selection, including its automatic GPU selector.
     :rtype: Any
     """
+    # Return the Genesis backend enum matching the requested identifier string.
     return {
         "auto": gs.gpu,
         "gpu": gs.gpu,
@@ -167,10 +176,13 @@ class MH3Simulation:
         :return: Converted NumPy array.
         :rtype: np.ndarray
         """
+        # Detach PyTorch tensors from computation graphs if gradient tracking is attached.
         if hasattr(value, "detach"):
             value = value.detach()
+        # Transfer GPU-resident tensor buffers back to host CPU memory.
         if hasattr(value, "cpu"):
             value = value.cpu()
+        # Cast the underlying data to a standard NumPy ndarray.
         return np.asarray(value, dtype=dtype)
 
     def build(self) -> MH3Simulation:
@@ -180,9 +192,11 @@ class MH3Simulation:
         """
         import genesis as gs
         self.gs = gs
+        # Select the desired compute backend and initialize the Genesis simulation framework.
         backend = _select_genesis_backend(gs, self.config.backend)
         gs.init(backend=backend, logging_level="warning")
         self.compute_backend = gs.backend.name
+        # Construct the Genesis scene containing simulation physics, lighting, and camera options.
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(dt=self.config.dt, gravity=self.config.gravity),
             viewer_options=gs.options.ViewerOptions(
@@ -194,7 +208,9 @@ class MH3Simulation:
             vis_options=gs.options.VisOptions(show_world_frame=True),
             show_viewer=self.config.show_viewer,
         )
+        # Add a static ground collision plane to the scene.
         self.floor = self.scene.add_entity(gs.morphs.Plane())
+        # Load the MH3 USD articulation stage into the scene at configured spawn coordinates.
         entities = self.scene.add_stage(
             gs.morphs.USD(
                 file=str(self.config.robot_usd),
@@ -202,10 +218,12 @@ class MH3Simulation:
                 euler=self.config.spawn_euler_deg,
             )
         )
+        # Identify the primary articulated robot model from the entities imported from the USD stage.
         articulated = [entity for entity in entities if any(joint.n_dofs for joint in entity.joints)]
         if not articulated:
             raise RuntimeError(f"No articulation was found in {self.config.robot_usd}")
         self.robot = max(articulated, key=lambda entity: sum(joint.n_dofs for joint in entity.joints))
+        # Add unattached camera sensors to the scene before scene compilation.
         for camera_config in self.config.cameras:
             self._cameras[camera_config.name] = self.scene.add_camera(
                 res=camera_config.resolution,
@@ -214,12 +232,17 @@ class MH3Simulation:
                 far=camera_config.far_m,
                 GUI=False,
             )
+        # Execute registered pre-build scene hooks to add custom user entities.
         for hook in tuple(self._scene_hooks):
             hook(self)
+        # Compile Genesis kernels and build the simulation scene.
         self.scene.build()
+        # Discover articulation joints, links, and finger mimic chains from the loaded asset.
         self._discover_joints()
         self._discover_finger_mimics()
+        # Initialize actuator gains, position holds, and lift limits.
         self._configure_actuators()
+        # Attach offscreen cameras to their specified mounting links on the robot.
         self._attach_cameras()
         return self
 
@@ -228,6 +251,7 @@ class MH3Simulation:
         :return: None when a robot articulation is available.
         :rtype: None
         """
+        # Ensure that the build() method was executed before performing robot queries.
         if self.robot is None:
             raise RuntimeError("Call build() before using the simulation")
 
@@ -236,7 +260,9 @@ class MH3Simulation:
         :return: None after updating the internal name indexes.
         :rtype: None
         """
+        # Index all robot links by their short USD prim name.
         self._links = {link.name.rstrip("/").rsplit("/", 1)[-1]: link for link in self.robot.links}
+        # Index one-degree-of-freedom joints to their local articulation DOF indices.
         for joint in self.robot.joints:
             if joint.n_dofs == 1:
                 name = joint.name.strip().rstrip("/").rsplit("/", 1)[-1]
@@ -248,16 +274,19 @@ class MH3Simulation:
         :rtype: None
         """
         from pxr import Usd
+        # Open the USD stage directly to inspect PhysX mimic joint authoring metadata.
         stage = Usd.Stage.Open(str(self.config.robot_usd))
         if stage is None:
             raise RuntimeError(f"Could not open MH3 USD: {self.config.robot_usd}")
         self._finger_mimics = {}
+        # Traverse USD prims to find mimic joint relationships on finger joints.
         for prim in stage.Traverse():
             relation = prim.GetRelationship("physxMimicJoint:rotZ:referenceJoint")
             if not relation or not relation.GetTargets():
                 continue
             follower = prim.GetName()
             reference = relation.GetTargets()[0].name
+            # Ensure both the reference joint and follower joint exist in the articulation.
             if follower not in self._joint_indices or reference not in self._joint_indices:
                 raise RuntimeError(f"MH3 finger mimic joint is missing: {reference} -> {follower}")
             gearing = prim.GetAttribute("physxMimicJoint:rotZ:gearing").Get()
@@ -274,6 +303,7 @@ class MH3Simulation:
         """
         expanded = dict(targets)
         pending = dict(self._finger_mimics)
+        # Iteratively resolve mimic dependencies until all reachable followers are computed.
         while pending:
             resolved = False
             for follower, (reference, multiplier, offset) in tuple(pending.items()):
@@ -294,15 +324,20 @@ class MH3Simulation:
         """
         if not self._finger_mimics:
             return
+        # Find all independent finger root joints that drive dependent follower segments.
         roots = tuple({reference for reference, _, _ in self._finger_mimics.values()} - self._finger_mimics.keys())
         indices = [self._joint_indices[name] for name in roots]
+        # Read current physical positions of all finger roots.
         positions = self._numpy(self.robot.get_dofs_position(indices))
+        # Compute derived target angles for all corresponding follower joints.
         expanded = self._expanded_finger_targets(dict(zip(roots, positions, strict=True)))
         followers = tuple(name for name in self._finger_mimics if name in expanded)
         values = [expanded[name] for name in followers]
         follower_indices = [self._joint_indices[name] for name in followers]
+        # Teleport followers immediately if requested.
         if immediate:
             self.robot.set_dofs_position(values, follower_indices)
+        # Command position controller setpoints for the follower DOFs.
         self.robot.control_dofs_position(values, follower_indices)
 
     def _configure_actuators(self) -> None:
@@ -311,9 +346,11 @@ class MH3Simulation:
         :rtype: None
         """
         indices = tuple(self._joint_indices.values())
+        # Assign uniform proportional and derivative gains to all standard articulation DOFs.
         if indices:
             self.robot.set_dofs_kp(np.full(len(indices), self.config.position_kp), indices)
             self.robot.set_dofs_kv(np.full(len(indices), self.config.position_kv), indices)
+        # Configure specialized high-gain, force-limited controller parameters for the torso slider.
         slider_index = self._joint_indices.get("slider_joint")
         if slider_index is not None:
             self.robot.set_dofs_kp([self.config.slider_position_kp], [slider_index])
@@ -322,6 +359,7 @@ class MH3Simulation:
             self.robot.set_dofs_force_range([-force], [force], [slider_index])
             lower, upper = self.robot.get_dofs_limit([slider_index])
             self._slider_limits = (float(self._numpy(lower)[0]), float(self._numpy(upper)[0]))
+        # Apply initial positions specified in the configuration file.
         if self.config.initial_positions:
             self.set_joint_positions(self.config.initial_positions, immediate=True)
         # USD pose alone does not enable a position hold for every imported DOF.
@@ -330,6 +368,7 @@ class MH3Simulation:
         if joint_state.names:
             public_indices = [self._public_joint_indices[name] for name in joint_state.names]
             self.robot.control_dofs_position(joint_state.positions, public_indices)
+        # Synchronize finger follower joints with their corresponding root joint poses.
         self._sync_finger_mimics()
 
     def _attach_cameras(self) -> None:
@@ -337,6 +376,7 @@ class MH3Simulation:
         :return: None after attaching all cameras.
         :rtype: None
         """
+        # Attach each configured camera sensor to its parent mounting link using its relative pose.
         for camera_config in self.config.cameras:
             try:
                 parent = self.get_link(camera_config.parent_link)
@@ -354,10 +394,12 @@ class MH3Simulation:
         :rtype: tuple[list[float], list[int]]
         """
         public_indices = self._public_joint_indices
+        # Check for any unrecognized public joint names in the command mapping.
         unknown = sorted(set(values) - public_indices.keys())
         if unknown:
             raise KeyError(f"Unknown MH3 joints: {unknown}")
         names = list(values)
+        # Return parallel lists of target values and local DOF indices.
         return [float(values[name]) for name in names], [public_indices[name] for name in names]
 
     @property
@@ -438,12 +480,17 @@ class MH3Simulation:
         :return: Copied joint state in requested order.
         :rtype: JointState
         """
+        # Ensure the simulation scene is constructed.
         self._require_built()
+        # Default to querying all participant-controllable joints if no subset is specified.
         selected = tuple(names) if names is not None else self.joint_names
+        # Reject any requested joint names that are not part of the public vocabulary.
         unknown = sorted(set(selected) - set(self.joint_names))
         if unknown:
             raise KeyError(f"Unknown MH3 joints: {unknown}")
+        # Resolve public joint names to local articulation DOF indices.
         indices = [self._public_joint_indices[name] for name in selected]
+        # Query current kinematic and dynamic state arrays and package them into a JointState.
         return JointState(
             names=selected,
             positions=self._numpy(self.robot.get_dofs_position(indices)),
@@ -458,12 +505,16 @@ class MH3Simulation:
         :return: Lower and upper position-limit arrays in requested order.
         :rtype: tuple[np.ndarray, np.ndarray]
         """
+        # Ensure the simulation scene is constructed.
         self._require_built()
+        # Default to querying all participant-controllable joints if no subset is specified.
         selected = tuple(names) if names is not None else self.joint_names
+        # Check for unknown joint names in the query selection.
         unknown = sorted(set(selected) - set(self.joint_names))
         if unknown:
             raise KeyError(f"Unknown MH3 joints: {unknown}")
         indices = [self._public_joint_indices[name] for name in selected]
+        # Query lower and upper physical motion bounds from the Genesis articulation.
         lower, upper = self.robot.get_dofs_limit(indices)
         return self._numpy(lower), self._numpy(upper)
 
@@ -474,8 +525,10 @@ class MH3Simulation:
         :return: Native Genesis link object.
         :rtype: Any
         """
+        # Ensure the simulation scene is constructed.
         self._require_built()
         links = self._public_links
+        # Validate that the requested link name exists in the public link mapping.
         if name not in links:
             raise KeyError(f"Unknown MH3 link {name!r}; choose from sim.link_names")
         return links[name]
@@ -487,7 +540,9 @@ class MH3Simulation:
         :return: Native Genesis camera object.
         :rtype: Any
         """
+        # Ensure the simulation scene is constructed.
         self._require_built()
+        # Validate that the camera name is registered in the scene.
         if name not in self._cameras:
             raise KeyError(f"Unknown camera {name!r}; choose from {self.camera_names}")
         return self._cameras[name]
@@ -501,15 +556,19 @@ class MH3Simulation:
         :return: None after submitting position targets.
         :rtype: None
         """
+        # Ensure the simulation scene is constructed.
         self._require_built()
         values, indices = self._selection(targets)
         if not indices:
             return
+        # Translate public joint targets into internal USD articulation joint names.
         usd_names = self._public_joint_usd_names
         internal_targets = {usd_names[name]: float(value) for name, value in targets.items()}
+        # Expand finger root targets to automatically include dependent mimic followers.
         expanded = self._expanded_finger_targets(internal_targets)
         values = [float(value) for value in expanded.values()]
         indices = [self._joint_indices[name] for name in expanded]
+        # Inspect and validate optional torso slider target position.
         slider_index = self._joint_indices.get("slider_joint")
         slider_target = targets.get("slider")
         if slider_target is not None:
@@ -520,6 +579,7 @@ class MH3Simulation:
                 lower, upper = self._slider_limits
                 if not lower <= slider_target <= upper:
                     raise ValueError(f"Slider target must be between {lower} and {upper} m")
+        # Teleport DOFs immediately to their targets without physical interpolation when requested.
         if immediate:
             self.robot.set_dofs_position(values, indices)
             self.robot.control_dofs_position(values, indices)
@@ -527,6 +587,7 @@ class MH3Simulation:
                 self._slider_target = slider_target
                 self._slider_reference = slider_target
             return
+        # Intercept slider target to handle rate-limited position ramping during step updates.
         if slider_target is not None:
             measured = float(self._numpy(self.robot.get_dofs_position([slider_index]))[0])
             self._slider_target = slider_target
@@ -534,6 +595,7 @@ class MH3Simulation:
             commands = [(value, index) for value, index in zip(values, indices, strict=True) if index != slider_index]
             values = [value for value, _ in commands]
             indices = [index for _, index in commands]
+        # Command standard joint position controller targets for remaining DOFs.
         if indices:
             self.robot.control_dofs_position(values, indices)
 
@@ -542,19 +604,25 @@ class MH3Simulation:
         :return: None after commanding the next lift reference.
         :rtype: None
         """
+        # Return if no active slider target has been set.
         if self._slider_target is None:
             return
         slider_index = self._joint_indices["slider_joint"]
+        # Read the current physical position of the torso slider.
         measured = float(self._numpy(self.robot.get_dofs_position([slider_index]))[0])
         reference = measured if self._slider_reference is None else self._slider_reference
+        # Step the reference position towards the goal within maximum speed constraints.
         max_step = self.config.slider_max_velocity_mps * self.config.dt
         reference += min(max(self._slider_target - reference, -max_step), max_step)
+        # Prevent the position setpoint from leading measured position beyond the configured lead limit.
         lead = self.config.slider_max_reference_lead_m
         reference = min(max(reference, measured - lead), measured + lead)
+        # Clamp reference within physical slider travel limits.
         if self._slider_limits is not None:
             lower, upper = self._slider_limits
             reference = min(max(reference, lower), upper)
         self._slider_reference = reference
+        # Command updated slider reference position to the actuator.
         self.robot.control_dofs_position([reference], [slider_index])
 
     def set_joint_velocities(self, targets: Mapping[str, float]) -> None:
@@ -564,7 +632,9 @@ class MH3Simulation:
         :return: None after submitting velocity targets.
         :rtype: None
         """
+        # Ensure the simulation scene is constructed.
         self._require_built()
+        # Resolve target velocities to DOF indices and apply them to actuators.
         values, indices = self._selection(targets)
         if indices:
             self.robot.control_dofs_velocity(values, indices)
@@ -578,7 +648,9 @@ class MH3Simulation:
         :return: None after commanding the internal drive wheels.
         :rtype: None
         """
+        # Ensure the simulation scene is constructed.
         self._require_built()
+        # Clamp linear and angular commands to configured base speed boundaries.
         linear_mps = min(
             max(float(linear_mps), -self.config.max_linear_velocity_mps), self.config.max_linear_velocity_mps
         )
@@ -586,16 +658,19 @@ class MH3Simulation:
             max(float(angular_radps), -self.config.max_angular_velocity_radps),
             self.config.max_angular_velocity_radps,
         )
+        # Compute differential drive wheel speeds based on wheel radius and axle width.
         half_track = self.config.wheel_separation_m * 0.5
         radius = self.config.wheel_radius_m
         targets = {
             _LEFT_WHEEL: (linear_mps - angular_radps * half_track) / radius,
             _RIGHT_WHEEL: (linear_mps + angular_radps * half_track) / radius,
         }
+        # Verify wheel joints exist in the loaded robot model.
         missing = sorted(set(targets) - set(self._joint_indices))
         if missing:
             raise RuntimeError(f"MH3 base joints were not found: {missing}")
         names = list(targets)
+        # Command rotational velocities to left and right drive wheels.
         self.robot.control_dofs_velocity(
             [targets[name] for name in names],
             [self._joint_indices[name] for name in names],
@@ -606,6 +681,7 @@ class MH3Simulation:
         :return: None after commanding zero base velocity.
         :rtype: None
         """
+        # Set base linear and angular velocities to zero.
         self.drive_base(0.0, 0.0)
 
     def set_joint_efforts(self, targets: Mapping[str, float]) -> None:
@@ -615,7 +691,9 @@ class MH3Simulation:
         :return: None after submitting effort targets.
         :rtype: None
         """
+        # Ensure the simulation scene is constructed.
         self._require_built()
+        # Resolve target efforts to DOF indices and apply direct forces/torques.
         values, indices = self._selection(targets)
         if indices:
             self.robot.control_dofs_force(values, indices)
@@ -646,15 +724,18 @@ class MH3Simulation:
         :return: Full articulation position solution as a NumPy array.
         :rtype: np.ndarray
         """
+        # Ensure the simulation scene is constructed.
         self._require_built()
         link = self.get_link(end_effector)
         dofs = None
+        # Convert user-selected joint names to local articulation DOF indices if constrained.
         if joints is not None:
             joint_names = tuple(joints)
             unknown = sorted(set(joint_names) - set(self.joint_names))
             if unknown:
                 raise KeyError(f"Unknown MH3 joints: {unknown}")
             dofs = [self._public_joint_indices[name] for name in joint_names]
+        # Invoke Genesis numerical inverse kinematics solver.
         solution = self.robot.inverse_kinematics(
             link=link,
             pos=np.asarray(tuple(position), dtype=float),
@@ -662,6 +743,7 @@ class MH3Simulation:
             dofs_idx_local=dofs,
             **solver_options,
         )
+        # Apply the solved configuration immediately to the articulation if requested.
         if apply:
             self.robot.set_qpos(solution)
             self._sync_finger_mimics(immediate=True)
@@ -690,10 +772,14 @@ class MH3Simulation:
         :return: Camera frame containing the requested NumPy arrays.
         :rtype: CameraFrame
         """
+        # Ensure the simulation scene is constructed.
         self._require_built()
         camera = self.get_camera(name)
+        # Update camera position to follow its attached mounting link pose.
         camera.move_to_attach()
+        # Render the requested visual channels.
         rendered = camera.render(rgb=rgb, depth=depth, segmentation=segmentation, normal=normal)
+        # Convert rendered Genesis tensors into standard NumPy arrays.
         values = [self._numpy(value, None) if value is not None else None for value in rendered]
         return CameraFrame(*values)
 
@@ -707,7 +793,9 @@ class MH3Simulation:
         :rtype: tuple[np.ndarray, np.ndarray]
         """
         camera = self.get_camera(name)
+        # Update camera position to follow its attached mounting link pose.
         camera.move_to_attach()
+        # Render 3D point cloud coordinates and validity boolean mask.
         points, mask = camera.render_pointcloud(world_frame=world_frame)
         return self._numpy(points, None), self._numpy(mask, None)
 
@@ -718,6 +806,7 @@ class MH3Simulation:
         :return: None after registering the callback.
         :rtype: None
         """
+        # Append step hook callback to the list of per-step observers.
         self._hooks.append(hook)
 
     def add_scene_hook(self, hook: SceneHook) -> None:
@@ -728,6 +817,7 @@ class MH3Simulation:
         :return: None after registering the callback.
         :rtype: None
         """
+        # Scene hooks must be registered prior to scene compilation.
         if self.scene is not None:
             raise RuntimeError("Scene hooks must be registered before build()")
         self._scene_hooks.append(hook)
@@ -737,11 +827,17 @@ class MH3Simulation:
         :return: None after updating physics and calling step hooks.
         :rtype: None
         """
+        # Ensure the simulation scene is constructed.
         self._require_built()
+        # Progress the rate-limited torso lift reference position.
         self._advance_slider_reference()
+        # Synchronize dependent finger segments with their root joints.
         self._sync_finger_mimics()
+        # Advance the physical simulation by one time step.
         self.scene.step()
+        # Increment internal simulation clock by the time step duration.
         self._sim_time += self.config.dt
+        # Execute registered step callbacks with this simulation instance.
         for hook in tuple(self._hooks):
             hook(self)
 
@@ -752,12 +848,15 @@ class MH3Simulation:
         :return: None when the requested run completes.
         :rtype: None
         """
+        # Ensure the simulation scene is constructed.
         self._require_built()
         next_step = time.monotonic()
         completed = 0
+        # Loop until either the step limit is satisfied or the simulation is stopped.
         while steps is None or completed < steps:
             self.step()
             completed += 1
+            # Maintain wall-clock synchronization if realtime simulation pacing is enabled.
             if self.config.realtime:
                 next_step += self.config.dt
                 delay = next_step - time.monotonic()

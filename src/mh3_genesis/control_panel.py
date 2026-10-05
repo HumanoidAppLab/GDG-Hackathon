@@ -50,9 +50,13 @@ class MH3ControlPanel:
         :return: None after initializing dashboard state.
         :rtype: None
         """
+        # Store the active simulation instance to observe and command.
         self.simulation = simulation
+        # Protect shared mutable dashboard state across threads with a mutex.
         self._lock = threading.Lock()
+        # Generate an ephemeral secret token to authenticate local HTTP POST requests.
         self._token = secrets.token_urlsafe(24)
+        # Initialize internal buffers for queued joint targets and mobile base drive commands.
         self._pending_positions: dict[str, float] = {}
         self._drive = (0.0, 0.0)
         self._drive_changed = False
@@ -61,6 +65,7 @@ class MH3ControlPanel:
         self._last_snapshot_at = 0.0
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
+        # Discover stereo camera pairs available on the robot articulation.
         self._camera_pairs = {
             source: (f"{source}_left", f"{source}_right")
             for source in ("head", "base")
@@ -70,16 +75,20 @@ class MH3ControlPanel:
         self._last_camera_request_at = 0.0
         self._last_camera_render_at = 0.0
         self._camera_error: str | None = None
+        # Exclude internal wheels and passive castors from public joint controls.
         self._joint_names = tuple(name for name in simulation.joint_names if name not in _BASE_INTERNAL_JOINTS)
+        # Query current joint states and limit ranges from the built simulation.
         state = simulation.get_joint_state(self._joint_names)
         lower, upper = simulation.get_joint_limits(state.names)
         limits: dict[str, tuple[float, float]] = {}
+        # Replace infinite limits with safe fallback ranges.
         for name, low, high in zip(state.names, lower, upper, strict=True):
             fallback = 0.5 if name == "slider" else math.pi
             low = float(low) if math.isfinite(low) else -fallback
             high = float(high) if math.isfinite(high) else fallback
             limits[name] = (low, high)
         self._limits = limits
+        # Cache initial home positions and seed current positions from measured state.
         self._home = {
             name: float(simulation.config.initial_positions.get(name, value))
             for name, value in zip(state.names, state.positions, strict=True)
@@ -116,6 +125,7 @@ class MH3ControlPanel:
                 :return: None after sending an HTTP response.
                 :rtype: None
                 """
+                # Serve the main HTML dashboard interface at the root path.
                 if self.path == "/":
                     self._send(
                         _html(
@@ -125,14 +135,18 @@ class MH3ControlPanel:
                         ),
                         "text/html; charset=utf-8",
                     )
+                # Return current robot joint states and simulation timing as JSON.
                 elif self.path == "/api/state":
                     self._send(json.dumps(panel.state()), "application/json")
+                # Return binary JPEG or PNG frames for requested camera streams.
                 elif self.path.startswith("/api/camera/"):
                     name = self.path.removeprefix("/api/camera/")
+                    # Reject unknown camera feed identifiers with an HTTP 404 response.
                     if name not in panel._camera_feed_names:
                         self.send_error(HTTPStatus.NOT_FOUND)
                         return
                     frame = panel.camera_frame(name)
+                    # Report temporary unavailability if the initial frame has not been rendered yet.
                     if frame is None:
                         self.send_error(HTTPStatus.SERVICE_UNAVAILABLE, "Camera frame is not ready")
                         return
@@ -145,12 +159,15 @@ class MH3ControlPanel:
                 :return: None after sending an HTTP response.
                 :rtype: None
                 """
+                # Ensure the request provides the required matching control authentication token.
                 if self.headers.get("X-Control-Token") != panel._token:
                     self.send_error(HTTPStatus.FORBIDDEN)
                     return
                 try:
+                    # Read and deserialize JSON payload from the request body.
                     length = int(self.headers.get("Content-Length", "0"))
                     body = json.loads(self.rfile.read(length) or b"{}")
+                    # Dispatch to corresponding target queue handler based on endpoint path.
                     if self.path == "/api/joints":
                         panel.queue_positions(body.get("targets", {}))
                     elif self.path == "/api/drive":
@@ -161,8 +178,10 @@ class MH3ControlPanel:
                         self.send_error(HTTPStatus.NOT_FOUND)
                         return
                 except (TypeError, ValueError, KeyError) as error:
+                    # Return client error status if command format or values are invalid.
                     self.send_error(HTTPStatus.BAD_REQUEST, str(error))
                     return
+                # Acknowledge successful receipt with an empty JSON object.
                 self._send("{}", "application/json")
 
             def _send(self, body: str | bytes, content_type: str) -> None:
@@ -174,12 +193,15 @@ class MH3ControlPanel:
                 :return: None after writing the response.
                 :rtype: None
                 """
+                # Ensure the payload is encoded into raw bytes.
                 encoded = body.encode() if isinstance(body, str) else body
+                # Write standard HTTP response headers with cache prevention.
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(encoded)))
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
+                # Write the response payload to the network stream.
                 self.wfile.write(encoded)
 
             def log_message(self, format: str, *args: Any) -> None:
@@ -192,10 +214,13 @@ class MH3ControlPanel:
                 :rtype: None
                 """
                 return
+        # Bind the HTTP server to loopback on an ephemeral port.
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        # Run server request handling on a dedicated background thread.
         self._thread = threading.Thread(target=self._server.serve_forever, name="mh3-controls", daemon=True)
         self._thread.start()
         print(f"MH3 control panel: {self.url}")
+        # Launch the local dashboard in the system default browser if enabled.
         if open_browser:
             webbrowser.open(self.url)
 
@@ -204,11 +229,15 @@ class MH3ControlPanel:
         :return: None after server shutdown.
         :rtype: None
         """
+        # Return cleanly if the server is not currently running.
         if self._server is None:
             return
+        # Zero out mobile base motion before shutting down.
         self.queue_drive(0.0, 0.0)
+        # Terminate the request processing loop and close the listening socket.
         self._server.shutdown()
         self._server.server_close()
+        # Wait for the background worker thread to exit cleanly.
         if self._thread is not None:
             self._thread.join(timeout=2.0)
         self._server = None
@@ -219,6 +248,7 @@ class MH3ControlPanel:
         :return: Joint positions, base command, camera status, and sim time.
         :rtype: dict[str, Any]
         """
+        # Assemble thread-safe snapshot dictionary under mutex protection.
         with self._lock:
             return {
                 "joints": [
@@ -252,8 +282,10 @@ class MH3ControlPanel:
         :return: Encoded image bytes, or None before the first render.
         :rtype: bytes | None
         """
+        # Validate that the requested camera stream name is supported.
         if name not in self._camera_feed_names:
             raise KeyError(f"Unknown camera feed: {name}")
+        # Record access timestamp and retrieve latest encoded frame bytes.
         with self._lock:
             self._last_camera_request_at = time.monotonic()
             return self._camera_frames.get(name)
@@ -266,6 +298,7 @@ class MH3ControlPanel:
         :return: JPEG image bytes.
         :rtype: bytes
         """
+        # Convert RGB array to an 8-bit PIL Image and compress as JPEG.
         output = BytesIO()
         Image.fromarray(np.asarray(rgb, dtype=np.uint8)).save(output, format="JPEG", quality=80)
         return output.getvalue()
@@ -284,11 +317,14 @@ class MH3ControlPanel:
         """
         values = np.asarray(depth)
         display_far = min(far_m, 5.0)
+        # Mask out non-finite, negative, and out-of-range depth values.
         valid = np.isfinite(values) & (values > 0.0) & (values < far_m)
         grayscale = np.zeros(values.shape, dtype=np.uint8)
+        # Linearly map valid distance values to brighter near and darker far pixels.
         grayscale[valid] = np.clip((display_far - values[valid]) / (display_far - near_m) * 255.0, 0.0, 255.0).astype(
             np.uint8
         )
+        # Encode grayscale array as a compressed PNG image.
         output = BytesIO()
         Image.fromarray(grayscale).save(output, format="PNG")
         return output.getvalue()
@@ -301,12 +337,15 @@ class MH3ControlPanel:
         :rtype: None
         """
         frames = {}
+        # Iterate over stereo camera pairs and capture synchronized frames.
         for source, (left_name, right_name) in self._camera_pairs.items():
             left = simulation.capture_camera(left_name, rgb=True, depth=True)
             right = simulation.capture_camera(right_name, rgb=True, depth=False)
+            # Ensure captured frames are valid.
             if left.rgb is None or left.depth is None or right.rgb is None:
                 raise RuntimeError(f"Camera pair {source!r} did not return RGB and depth frames")
             camera_config = next(camera for camera in simulation.config.cameras if camera.name == left_name)
+            # Compress captured RGB and metric depth buffers into web-deliverable image formats.
             frames.update(
                 {
                     f"{source}-left-rgb": self._encode_rgb(left.rgb),
@@ -314,6 +353,7 @@ class MH3ControlPanel:
                     f"{source}-depth": self._encode_depth(left.depth, camera_config.near_m, camera_config.far_m),
                 }
             )
+        # Store newly encoded frames and clear previous camera errors.
         with self._lock:
             self._camera_frames = frames
             self._camera_error = None
@@ -325,17 +365,21 @@ class MH3ControlPanel:
         :return: None after queuing bounded targets.
         :rtype: None
         """
+        # Ensure targets argument is a valid mapping object.
         if not isinstance(targets, dict):
             raise TypeError("targets must be an object keyed by joint name")
         clean: dict[str, float] = {}
+        # Verify each target refers to a known joint and contains a finite numeric value.
         for name, value in targets.items():
             if name not in self._limits:
                 raise KeyError(f"Unknown joint: {name}")
             value = float(value)
             if not math.isfinite(value):
                 raise ValueError(f"Joint target must be finite: {name}")
+            # Clamp the commanded target to the configured minimum and maximum limits.
             low, high = self._limits[name]
             clean[name] = min(max(value, low), high)
+        # Enqueue validated targets into the pending positions buffer under lock.
         with self._lock:
             self._pending_positions.update(clean)
 
@@ -348,9 +392,11 @@ class MH3ControlPanel:
         :return: None after queuing the base command.
         :rtype: None
         """
+        # Convert commanded velocities to floats and confirm they are finite.
         linear, angular = float(linear), float(angular)
         if not math.isfinite(linear) or not math.isfinite(angular):
             raise ValueError("Drive commands must be finite")
+        # Update pending drive command velocities and reset the deadman timer.
         with self._lock:
             self._drive = (linear, angular)
             self._drive_changed = True
@@ -362,8 +408,10 @@ class MH3ControlPanel:
         :return: None after queuing the home and stop commands.
         :rtype: None
         """
+        # Reset all controllable joints to their configured home startup positions.
         with self._lock:
             self._pending_positions.update(self._home)
+        # Immediately command base velocities to zero.
         self.queue_drive(0.0, 0.0)
 
     def update(self, simulation: MH3Simulation) -> None:
@@ -374,29 +422,36 @@ class MH3ControlPanel:
         :rtype: None
         """
         now = time.monotonic()
+        # Retrieve and clear pending position and drive commands under lock.
         with self._lock:
             positions = self._pending_positions
             self._pending_positions = {}
             drive = self._drive
             drive_changed = self._drive_changed
             self._drive_changed = False
+            # Check if active drive command has exceeded the deadman switch timeout.
             if self._drive_active and now - self._drive_received_at > simulation.config.drive_command_timeout_s:
                 drive = (0.0, 0.0)
                 self._drive = drive
                 self._drive_active = False
                 drive_changed = True
+        # Forward queued joint targets to the simulation articulation.
         if positions:
             simulation.set_joint_positions(positions)
+        # Forward changed base velocity commands to the simulation differential drive.
         if drive_changed:
             linear, angular = drive
             simulation.drive_base(linear, angular)
+        # Periodically sample measured joint state for dashboard display at roughly 10 Hz.
         if now - self._last_snapshot_at >= 0.1:
             state = simulation.get_joint_state(self._joint_names)
             with self._lock:
                 self._positions = {name: float(value) for name, value in zip(state.names, state.positions, strict=True)}
             self._last_snapshot_at = now
+        # Check whether an active client has requested camera frames in the last two seconds.
         with self._lock:
             camera_requested = now - self._last_camera_request_at < 2.0
+        # Render camera frames at a controlled frame rate if cameras are active and requested.
         if self._camera_pairs and camera_requested and now - self._last_camera_render_at >= 0.4:
             try:
                 self._render_camera_frames(simulation)
@@ -420,8 +475,10 @@ def _html(token: str, max_linear: float, max_angular: float) -> str:
     :return: Complete dashboard HTML document.
     :rtype: str
     """
+    # Calculate step sizes for UI range sliders based on maximum configured speeds.
     linear_step = max_linear / 12.0
     angular_step = max_angular / 20.0
+    # Return the assembled HTML template incorporating styles, controls, and script.
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MH3 Controls</title><style>

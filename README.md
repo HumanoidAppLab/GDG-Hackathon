@@ -4,37 +4,57 @@ This repository is a self-contained, Python-based starting point for building pr
 
 ## Setup and run
 
-Run the setup script for your platform. It installs uv locally if needed, downloads the pinned Python automatically, installs the pinned [Genesis](https://genesis-embodied-ai.github.io/) release, selects compatible accelerator dependencies, and verifies the bundled robot, physics, and a camera's RGB/depth rendering.
+### Supported platforms
 
+- **Linux x64** (glibc 2.28+)
+- **Apple Silicon macOS** (macOS 14+)
+- **Windows 10+ x64**
+
+*(Intel Macs, ARM Linux/Windows, and 32-bit platforms are not supported.)*
+
+### Prerequisites
+
+- **Linux:** `curl` or `wget`, plus graphics runtime libraries (`libgl1`, `libegl1`, `libglib2.0-0` on Ubuntu/Debian). On WSL2, ensure WSLg and updated GPU drivers are installed.
+- Working GPU drivers and OpenGL/EGL runtime (required for cameras and the viewer, even if physics runs on CPU). See [Genesis installation requirements](https://genesis-world.readthedocs.io/en/latest/user_guide/overview/installation.html).
+
+### Installation & running
+
+**Linux / Apple Silicon macOS:**
 ```bash
-# Linux x64 or Apple Silicon macOS
+# Install
 bash setup.sh
+# Run
 ./run.sh
 ```
 
+**Windows x64 (PowerShell):**
 ```powershell
-# Windows x64; the process-only policy handles downloaded/unsigned scripts.
 powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 .\run.ps1
 ```
 
-This targets Windows 10+ x64, Linux x64 with glibc 2.28+, and Apple Silicon with macOS 14+. Intel Macs, native Windows ARM, Linux ARM, 32-bit systems, and Alpine/musl lack wheels required by the pinned dependency stack.
+> **Note:** Initial setup may take a few minutes while kernels compile and the environment is verified.
 
-Linux needs `curl` or `wget` for uv bootstrapping. A working graphics driver and OpenGL/EGL runtime are needed for the viewer and cameras, including when physics runs on the CPU. GPU drivers and OS graphics libraries are system prerequisites: setup reports recovery instructions rather than installing system software. On Ubuntu/Debian the graphics runtime packages include `libgl1`, `libegl1`, and `libglib2.0-0`; on WSL use WSLg and updated Windows GPU drivers. See [Genesis installation requirements](https://genesis-world.readthedocs.io/en/latest/user_guide/overview/installation.html).
+**Common options:**
+- Force CPU physics: `bash setup.sh --cpu` (or `.\setup.ps1 --cpu`)
+- Run options: `./run.sh [--headless] [--no-controls] [--backend cpu]`
+- Reset environment: `bash setup.sh --reset`
 
-Setup uses `.python-version` and leaves `pyproject.toml` and `uv.lock` unchanged. On fresh installations, PyTorch-only accelerator libraries are deferred until hardware selection, avoiding unnecessary CUDA 13 downloads on CPU-only machines. Genesis's own native dependencies are still installed. A working, compatible PyTorch accelerator wheel is kept. If another accelerator is needed, its complete dependency graph is resolved while the release's non-accelerator versions remain pinned. If acceleration fails, setup tries CPU physics; graphics failures still need the system graphics runtime repaired. Use `bash setup.sh --cpu` or `powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 --cpu` to request CPU PyTorch and physics explicitly.
+## Upgrading
 
-The verified backend, installed package versions, dependency constraints, and camera preview are recorded locally in `.setup/`, which is excluded from Git. Run scripts reuse a verified CPU fallback unless you supply `--backend` explicitly. Repeated setup reuses the verified environment when the release and installed package versions match, and repeats the simulator check. Use `--reset` to restore the frozen release and redetect hardware after a driver or hardware change. Local uv lives in `.uv/`, also excluded from Git; setup, run, and upgrade find it directly without changing your shell profile. Its cache and managed Python downloads use uv's normal user directories.
+To update dependencies to the latest Genesis release:
 
-The first simulator verification may take several minutes to compile physics and rendering kernels. A successful check saves `.setup/preview.png` and reports the actual Genesis backend. The check verifies offscreen rendering; use the run script to confirm the interactive viewer on a local desktop. The run scripts forward arguments such as `--headless`, `--backend cpu`, or `--no-controls`.
+**Linux / Apple Silicon macOS:**
+```bash
+./upgrade.sh
+```
 
-## Upgrade dependencies (maintainers)
+**Windows x64 (PowerShell):**
+```powershell
+.\upgrade.ps1
+```
 
-Participants should run **setup**, which installs the distributed, frozen release. Maintainers should run `./upgrade.sh` or `.\upgrade.ps1` before the event, then manually validate the updated release on the intended machines before distributing it.
-
-The wrappers bootstrap uv if needed and run `upgrade.py` from the repository root. It discovers the latest stable, non-yanked Genesis release and newest stable CPython supported by that release. uv resolves the combined runtime, development, optional, and build dependencies, trying an older supported Python minor if the newest cannot resolve the complete set. It removes stale direct package bounds, preserves extras such as USD support, and records compatible direct versions in `pyproject.toml`, transitive versions in `uv.lock`, and the Python patch in `.python-version`. The Python requirement and Ruff target are updated together. Genesis's requirements may keep some packages below their latest standalone releases.
-
-Use `--dry-run` to preview without changing project files or `.venv`, or `--lock-only` to update the three release files without installing. Python and bootstrap dependencies may be downloaded into uv's cache during a preview. Resolution takes place in a temporary directory; failure leaves the existing release files intact. Once files are updated, the default upgrade invokes the same setup and simulator verification used by participants. If installation or verification fails, the updated files remain available for retrying setup. A universal lock resolution does not prove wheel availability, graphics support, or hardware compatibility on every platform; repeat the manual platform checks after upgrading.
+Use `--dry-run` to preview changes or `--lock-only` to update lockfiles without installing.
 
 ## Browser dashboard
 
