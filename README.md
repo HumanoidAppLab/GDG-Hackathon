@@ -74,9 +74,10 @@ The dashboard provides an interactive web interface for driving the base, posing
 - **Base drive:** Hold on-screen buttons or use **W / A / S / D** (or arrow keys) to drive the base. Speed sliders adjust maximum linear and angular rates. Releasing a control stops base motion automatically.
 - **Joint controls:** Adjust sliders or enter numeric values to pose joints. Click **Return all joints home** to restore the default startup configuration.
 - **IK tester:** Interactively solve inverse kinematics for chosen end effectors and reference frames with position and orientation targets.
-- **Camera feeds:** Displays live views for head and base cameras (left RGB, right RGB, and depth). In depth views, close surfaces are bright and distances beyond 5 m are dark.
+- **Camera feeds:** Displays live views for head and base cameras (left RGB, right RGB, and depth). In depth views, close surfaces are white and far distances are black.
 
 ### Using the Dashboard
+
 You can easily embed the dashboard in your custom simulation scripts:
 
 ```python
@@ -133,9 +134,8 @@ uv run my_script.py
 
 ### API Usage Example - `hello_mh3.py`
 
-A complete, self-contained starter script demonstrating scene hooks, joint commands, base driving, state queries, inverse kinematics, camera capture, and step hooks is provided in [`hello_mh3.py`](hello_mh3.py).
+A complete, self-contained starter script demonstrating scene hooks, joint commands, base driving, state queries, inverse kinematics, camera capture, and step hooks is provided in [`hello_mh3.py`](hello_mh3.py "hello_mh3.py"). Run it directly with:
 
-Run it directly with:
 ```bash
 uv run hello_mh3.py
 ```
@@ -214,3 +214,12 @@ finally:
 ```
 
 Advanced projects can also directly access `sim.scene`, `sim.robot`, `sim.floor`, and `sim.gs` for any native [Genesis World](https://github.com/Genesis-Embodied-AI/genesis-world "Genesis World") feature.
+
+## Resources
+
+These are resources which you may consider using with this project.
+
+- [Genesis World Documentation](https://genesis-world.readthedocs.io/en/latest/user_guide/index.html "Genesis World - Documentation") - Core physics and rendering engine of this project.
+- [Google Gemma](https://ai.google.dev/gemma/docs "Google Gemma") - Google's lightweight, on-device multi-modal on-device AI model.
+- [Gemini Robotics ER-2](https://ai.google.dev/gemini-api/docs/generate-content/robotics-overview "Gemini Robotics ER-2") - Google's flagship Embodied Reasoning (ER) Vision-Language Model (VLM).
+- [LeRobot](https://huggingface.co/docs/lerobot/index "LeRobot") - Machine learning framework for robotics by [HuggingFace](https://huggingface.co "HuggingFace").
