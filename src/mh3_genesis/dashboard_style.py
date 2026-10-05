@@ -62,6 +62,12 @@ h2
     font-size: 15px;
     margin: 0 0 14px;
 }
+.sidebar
+{
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
 .workspace
 {
     display: grid;
@@ -183,6 +189,86 @@ input[type=number]
     color: var(--muted);
     font-size: 12px;
     line-height: 1.5;
+}
+.field-label
+{
+    display: block;
+    margin: 10px 0 4px;
+    color: var(--muted);
+    font-size: 12px;
+}
+select
+{
+    width: 100%;
+    margin-top: 4px;
+    background: #0e1620;
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 7px 8px;
+    font: inherit;
+}
+select:focus
+{
+    outline: none;
+    border-color: var(--accent);
+}
+.coord-row
+{
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-top: 4px;
+}
+.coord-row label
+{
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--muted);
+}
+.coord-row input[type=number]
+{
+    width: 100%;
+}
+.orient-check
+{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    cursor: pointer;
+}
+.orient-check input[type=checkbox]
+{
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+.ik-buttons
+{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 12px;
+}
+button.btn-primary
+{
+    background: #1b4b72;
+    border-color: #3172aa;
+    color: #e9f0f7;
+    font-weight: 500;
+}
+button.btn-primary:hover
+{
+    background: #245e8e;
+}
+#ik-status
+{
+    margin-top: 10px;
+    min-height: 28px;
 }
 @media (max-width: 1000px)
 {

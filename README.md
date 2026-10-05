@@ -140,17 +140,17 @@ Or use it as a reference for your own scripts:
 
 ```python
 import numpy as np
-from mh3_genesis import MH3Simulation, SimulatorConfig
+from mh3_genesis import MH3ControlPanel, MH3Simulation, SimulatorConfig
 
 # 1. Load configuration and initialize simulation.
 config = SimulatorConfig.from_yaml("config/mh3.yaml")
 sim = MH3Simulation(config)
 
+
 # 2. Scene hook: add custom entities before Genesis compiles the scene.
 def add_custom_world(simulation: MH3Simulation) -> None:
-    simulation.scene.add_entity(
-        simulation.gs.morphs.Box(pos=(1.0, 0.0, 0.25), size=(0.3, 0.3, 0.5))
-    )
+    simulation.scene.add_entity(simulation.gs.morphs.Box(pos=(1.0, 0.0, 0.25), size=(0.3, 0.3, 0.5)))
+
 
 sim.add_scene_hook(add_custom_world)
 
@@ -176,7 +176,7 @@ sim.stop_base()
 # 5. Read joint states (positions, velocities, efforts).
 joint_state = sim.get_joint_state(["head_yaw", "head_pitch", "slider"])
 
-# 6. Inverse Kinematics (IK) for arm manipulation.
+# 6. Inverse Kinematics (IK) for arm manipulation (world space by default, or frame="link_name").
 left_arm_joints = [f"left_{i}" for i in range(1, 8)]
 solution = sim.solve_ik(
     end_effector="left_gripper_base",
@@ -189,15 +189,24 @@ solution = sim.solve_ik(
 frame = sim.capture_camera("head_left", rgb=True, depth=True)
 points, valid_depth = sim.capture_pointcloud("head_left")
 
+
 # 8. Step hook: register callbacks to run after each physics step.
 def behavior_controller(simulation: MH3Simulation) -> None:
     if simulation.sim_time > 1.0:
         simulation.set_joint_positions({"head_pitch": 0.0})
 
+
 sim.add_step_hook(behavior_controller)
 
-# Run indefinitely (or pass steps=... to run for a specific duration).
-sim.run()
+# 9. Start browser dashboard and run.
+panel = MH3ControlPanel(sim)
+panel.start()
+sim.add_step_hook(panel.update)
+
+try:
+    sim.run()
+finally:
+    panel.close()
 ```
 
 Advanced projects can also directly access `sim.scene`, `sim.robot`, `sim.floor`, and `sim.gs` for any native [Genesis World](https://genesis-embodied-ai.github.io "Genesis World") feature.

@@ -1,4 +1,5 @@
 """Load and validate the MH3 simulation and camera configuration."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -8,6 +9,7 @@ from typing import Any
 import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 @dataclass(frozen=True)
 class CameraConfig:
@@ -48,6 +50,7 @@ class CameraConfig:
         :rtype: tuple[int, int]
         """
         return self.width, self.height
+
 
 @dataclass(frozen=True)
 class SimulatorConfig:

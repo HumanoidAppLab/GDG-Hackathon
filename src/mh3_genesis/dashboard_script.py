@@ -7,6 +7,9 @@ let built = false;
 let drive = 'stop';
 let cameraSources = [];
 let feedsBusy = false;
+let ikBuilt = false;
+let ikSolving = false;
+let currentQuat = null;
 
 /**
  * Send a dashboard command to the local simulation server.
@@ -109,6 +112,171 @@ function sync(joints)
 }
 
 /**
+ * Populate end effector and reference frame options for the IK tester.
+ * @param {object} state - Initial simulation snapshot containing link lists.
+ * @returns {void} The dropdown options are initialized.
+ */
+function buildIk(state)
+{
+    const eeSelect = document.querySelector('#ik-ee');
+    const frameSelect = document.querySelector('#ik-frame');
+    if (!eeSelect || !frameSelect || ikBuilt) return;
+    const recommendedEe = state.end_effectors || [];
+    const recommendedFrames = state.frames || [];
+    const allLinks = state.all_links || [];
+
+    eeSelect.innerHTML = '';
+    const recEeGroup = document.createElement('optgroup');
+    recEeGroup.label = 'Recommended end effectors';
+    for (const link of recommendedEe)
+    {
+        const opt = document.createElement('option');
+        opt.value = link;
+        opt.textContent = link;
+        recEeGroup.append(opt);
+    }
+    eeSelect.append(recEeGroup);
+
+    const otherEe = allLinks.filter(l => !recommendedEe.includes(l)).sort();
+    if (otherEe.length)
+    {
+        const otherEeGroup = document.createElement('optgroup');
+        otherEeGroup.label = 'All other links';
+        for (const link of otherEe)
+        {
+            const opt = document.createElement('option');
+            opt.value = link;
+            opt.textContent = link;
+            otherEeGroup.append(opt);
+        }
+        eeSelect.append(otherEeGroup);
+    }
+
+    if (recommendedEe.includes('left_gripper_base'))
+    {
+        eeSelect.value = 'left_gripper_base';
+    }
+
+    frameSelect.innerHTML = '';
+    const worldOpt = document.createElement('option');
+    worldOpt.value = '';
+    worldOpt.textContent = 'World space (None)';
+    frameSelect.append(worldOpt);
+
+    const recFrameGroup = document.createElement('optgroup');
+    recFrameGroup.label = 'Robot link frames';
+    for (const link of recommendedFrames)
+    {
+        const opt = document.createElement('option');
+        opt.value = link;
+        opt.textContent = link;
+        recFrameGroup.append(opt);
+    }
+    frameSelect.append(recFrameGroup);
+
+    const otherFrames = allLinks.filter(l => !recommendedFrames.includes(l)).sort();
+    if (otherFrames.length)
+    {
+        const otherFrameGroup = document.createElement('optgroup');
+        otherFrameGroup.label = 'All other links';
+        for (const link of otherFrames)
+        {
+            const opt = document.createElement('option');
+            opt.value = link;
+            opt.textContent = link;
+            otherFrameGroup.append(opt);
+        }
+        frameSelect.append(otherFrameGroup);
+    }
+
+    eeSelect.onchange = () => readCurrentPose();
+    frameSelect.onchange = () => readCurrentPose();
+    ikBuilt = true;
+    readCurrentPose();
+}
+
+/**
+ * Query and fill current coordinates for the chosen end effector and reference frame.
+ * @returns {Promise<void>} Coordinates are placed into X/Y/Z inputs.
+ */
+async function readCurrentPose()
+{
+    const eeSelect = document.querySelector('#ik-ee');
+    const frameSelect = document.querySelector('#ik-frame');
+    const statusElem = document.querySelector('#ik-status');
+    if (!eeSelect || !frameSelect) return;
+    const ee = eeSelect.value;
+    const frame = frameSelect.value;
+    if (!ee) return;
+    try
+    {
+        const url = '/api/link-pose?link=' + encodeURIComponent(ee) + (frame ? '&frame=' + encodeURIComponent(frame) : '');
+        const response = await fetch(url, {cache: 'no-store'});
+        if (!response.ok) throw new Error(await response.text());
+        const data = await response.json();
+        currentQuat = data.quaternion;
+        document.querySelector('#ik-x').value = data.position[0].toFixed(3);
+        document.querySelector('#ik-y').value = data.position[1].toFixed(3);
+        document.querySelector('#ik-z').value = data.position[2].toFixed(3);
+        if (statusElem && !ikSolving)
+        {
+            const frameLabel = frame || 'world';
+            statusElem.textContent = `Pose for ${ee} in ${frameLabel}: (${data.position[0].toFixed(2)}, ${data.position[1].toFixed(2)}, ${data.position[2].toFixed(2)})`;
+        }
+    }
+    catch (error)
+    {
+        if (statusElem) statusElem.textContent = `Pose read failed: ${error.message}`;
+    }
+}
+
+/**
+ * Submit target end effector, frame, coordinates, and joint constraints for IK solving.
+ * @returns {Promise<void>} The request is submitted to the simulation server.
+ */
+async function applyIk()
+{
+    const ee = document.querySelector('#ik-ee').value;
+    const frame = document.querySelector('#ik-frame').value || null;
+    const x = Number(document.querySelector('#ik-x').value);
+    const y = Number(document.querySelector('#ik-y').value);
+    const z = Number(document.querySelector('#ik-z').value);
+    const jointsChoice = document.querySelector('#ik-joints').value;
+    const statusElem = document.querySelector('#ik-status');
+    const lockOrient = document.querySelector('#ik-orient')?.checked;
+    const quat = lockOrient && currentQuat ? currentQuat : null;
+
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z))
+    {
+        if (statusElem) statusElem.textContent = 'Coordinates must be valid finite numbers.';
+        return;
+    }
+    ikSolving = true;
+    if (statusElem) statusElem.textContent = `Solving IK for ${ee}…`;
+    try
+    {
+        const response = await post('/api/ik', {
+            end_effector: ee,
+            position: [x, y, z],
+            quaternion: quat,
+            frame: frame,
+            joints: jointsChoice,
+        });
+        if (!response.ok)
+        {
+            const message = await response.text();
+            if (statusElem) statusElem.textContent = `IK error: ${message}`;
+            ikSolving = false;
+        }
+    }
+    catch (error)
+    {
+        if (statusElem) statusElem.textContent = `IK error: ${error.message}`;
+        ikSolving = false;
+    }
+}
+
+/**
  * Poll simulation status and camera availability.
  * @returns {Promise<void>} The dashboard reflects the latest state.
  */
@@ -119,6 +287,12 @@ async function poll()
         const state = await fetch('/api/state', {cache: 'no-store'}).then(response => response.json());
         if (!built) build(state.joints);
         else sync(state.joints);
+        if (!ikBuilt && state.end_effectors) buildIk(state);
+        if (state.ik_status)
+        {
+            document.querySelector('#ik-status').textContent = state.ik_status;
+            ikSolving = false;
+        }
         document.querySelector('#status').textContent = `Connected · ${state.sim_time.toFixed(2)} s`;
         cameraSources = state.camera_sources;
         for (const source of ['head', 'base'])
@@ -233,4 +407,6 @@ window.onkeyup = event =>
 };
 window.onblur = () => command('stop');
 document.querySelector('#home').onclick = resetHome;
+document.querySelector('#ik-read').onclick = readCurrentPose;
+document.querySelector('#ik-solve').onclick = applyIk;
 """

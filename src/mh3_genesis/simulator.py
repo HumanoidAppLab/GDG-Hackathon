@@ -1,4 +1,5 @@
 """Expose a ROS-free MH3 simulation with joints, links, cameras, and IK."""
+
 from __future__ import annotations
 
 import time
@@ -26,6 +27,7 @@ _INTERNAL_BASE_JOINTS = frozenset(
     }
 )
 
+
 def _public_joint_name(name: str) -> str:
     """Translate a USD joint name into the participant-facing vocabulary.
     :param name: Original joint name from the USD articulation.
@@ -44,6 +46,7 @@ def _public_joint_name(name: str) -> str:
                 part = part.removesuffix("_1")
             return replacement + part
     return name
+
 
 def _public_link_name(name: str) -> str:
     """Give imported links predictable names without changing the USD.
@@ -73,6 +76,7 @@ def _public_link_name(name: str) -> str:
     # Replace end-effector acronyms with descriptive tip designations.
     return name.removesuffix("_ee") + "_tip" if name.endswith("_ee") else name
 
+
 def _select_genesis_backend(gs: Any, requested: str) -> Any:
     """Map a backend name to the matching Genesis backend.
     :param gs: Imported Genesis module.
@@ -91,6 +95,48 @@ def _select_genesis_backend(gs: Any, requested: str) -> Any:
         "amdgpu": gs.amdgpu,
         "metal": gs.metal,
     }[requested]
+
+
+def _quat_rotate(q_wxyz: np.ndarray, v_xyz: np.ndarray) -> np.ndarray:
+    """Rotate a 3D vector by a quaternion in WXYZ format.
+    :param q_wxyz: Orientation quaternion formatted as (W, X, Y, Z).
+    :type q_wxyz: np.ndarray
+    :param v_xyz: 3D translation vector to rotate.
+    :type v_xyz: np.ndarray
+    :return: Rotated 3D vector.
+    :rtype: np.ndarray
+    """
+    # Extract imaginary vector components from the orientation quaternion.
+    r = q_wxyz[1:4]
+    # Compute double cross product: t = 2.0 * (r x v).
+    t = 2.0 * np.cross(r, v_xyz)
+    # Complete Rodrigues rotation formula: v' = v + w*t + r x t.
+    return v_xyz + q_wxyz[0] * t + np.cross(r, t)
+
+
+def _quat_multiply(q1_wxyz: np.ndarray, q2_wxyz: np.ndarray) -> np.ndarray:
+    """Multiply two quaternions formatted in WXYZ order (q1 * q2).
+    :param q1_wxyz: Left orientation quaternion (W, X, Y, Z).
+    :type q1_wxyz: np.ndarray
+    :param q2_wxyz: Right orientation quaternion (W, X, Y, Z).
+    :type q2_wxyz: np.ndarray
+    :return: Composed orientation quaternion in WXYZ order.
+    :rtype: np.ndarray
+    """
+    # Unpack scalar and vector parts of both quaternions.
+    w1, x1, y1, z1 = q1_wxyz
+    w2, x2, y2, z2 = q2_wxyz
+    # Compute Hamiltonian quaternion product.
+    return np.array(
+        [
+            w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+            w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+            w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+            w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+        ],
+        dtype=float,
+    )
+
 
 @dataclass(frozen=True)
 class JointState:
@@ -112,6 +158,7 @@ class JointState:
     velocities: np.ndarray
     efforts: np.ndarray
 
+
 @dataclass(frozen=True)
 class CameraFrame:
     """Hold images rendered directly by a Genesis camera.
@@ -131,6 +178,7 @@ class CameraFrame:
     depth: np.ndarray | None = None
     segmentation: np.ndarray | None = None
     normal: np.ndarray | None = None
+
 
 class MH3Simulation:
     """Expose a ROS-free API around the MH3 Genesis articulation.
@@ -155,6 +203,7 @@ class MH3Simulation:
         self.floor: Any = None
         self.robot: Any = None
         self._joint_indices: dict[str, int] = {}
+        self._q_indices: dict[str, int] = {}
         self._finger_mimics: dict[str, tuple[str, float, float]] = {}
         self._links: dict[str, Any] = {}
         self._cameras: dict[str, Any] = {}
@@ -164,6 +213,7 @@ class MH3Simulation:
         self._slider_target: float | None = None
         self._slider_reference: float | None = None
         self._slider_limits: tuple[float, float] | None = None
+        self._home_positions: dict[str, float] = {}
         self.compute_backend: str | None = None
 
     @staticmethod
@@ -191,6 +241,7 @@ class MH3Simulation:
         :rtype: MH3Simulation
         """
         import genesis as gs
+
         self.gs = gs
         # Select the desired compute backend and initialize the Genesis simulation framework.
         backend = _select_genesis_backend(gs, self.config.backend)
@@ -262,11 +313,12 @@ class MH3Simulation:
         """
         # Index all robot links by their short USD prim name.
         self._links = {link.name.rstrip("/").rsplit("/", 1)[-1]: link for link in self.robot.links}
-        # Index one-degree-of-freedom joints to their local articulation DOF indices.
+        # Index one-degree-of-freedom joints to their local articulation DOF and coordinate indices.
         for joint in self.robot.joints:
             if joint.n_dofs == 1:
                 name = joint.name.strip().rstrip("/").rsplit("/", 1)[-1]
                 self._joint_indices[name] = int(joint.dofs_idx_local[0])
+                self._q_indices[name] = int(joint.qs_idx_local[0])
 
     def _discover_finger_mimics(self) -> None:
         """Read finger follower chains authored in the MH3 USD.
@@ -274,6 +326,7 @@ class MH3Simulation:
         :rtype: None
         """
         from pxr import Usd
+
         # Open the USD stage directly to inspect PhysX mimic joint authoring metadata.
         stage = Usd.Stage.Open(str(self.config.robot_usd))
         if stage is None:
@@ -368,6 +421,11 @@ class MH3Simulation:
         if joint_state.names:
             public_indices = [self._public_joint_indices[name] for name in joint_state.names]
             self.robot.control_dofs_position(joint_state.positions, public_indices)
+        # Snapshot the true initial startup home pose across all public controllable joints.
+        self._home_positions = {
+            name: float(self.config.initial_positions.get(name, pos))
+            for name, pos in zip(joint_state.names, joint_state.positions, strict=True)
+        }
         # Synchronize finger follower joints with their corresponding root joint poses.
         self._sync_finger_mimics()
 
@@ -431,6 +489,14 @@ class MH3Simulation:
         return {name: self._joint_indices[usd_name] for name, usd_name in self._public_joint_usd_names.items()}
 
     @property
+    def _public_q_indices(self) -> dict[str, int]:
+        """Map public joint names to local articulation qpos coordinate indices.
+        :return: Public-to-local-qpos mapping.
+        :rtype: dict[str, int]
+        """
+        return {name: self._q_indices[usd_name] for name, usd_name in self._public_joint_usd_names.items()}
+
+    @property
     def _public_links(self) -> dict[str, Any]:
         """Map readable link names to native Genesis links.
         :return: Collision-checked public link mapping.
@@ -456,6 +522,14 @@ class MH3Simulation:
         :rtype: tuple[str, ...]
         """
         return tuple(self._public_joint_indices)
+
+    @property
+    def home_positions(self) -> dict[str, float]:
+        """Return the startup home positions for all controllable joints.
+        :return: Copy of configured or default startup joint positions.
+        :rtype: dict[str, float]
+        """
+        return dict(self._home_positions)
 
     @property
     def link_names(self) -> tuple[str, ...]:
@@ -532,6 +606,41 @@ class MH3Simulation:
         if name not in links:
             raise KeyError(f"Unknown MH3 link {name!r}; choose from sim.link_names")
         return links[name]
+
+    def get_link_pose(
+        self,
+        name: str,
+        frame: str | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Read the position and orientation of a link in world space or a reference frame.
+        :param name: Public link name to inspect.
+        :type name: str
+        :param frame: Reference link name, or None for world space.
+        :type frame: str | None
+        :return: Tuple containing position (x, y, z) and quaternion (w, x, y, z).
+        :rtype: tuple[np.ndarray, np.ndarray]
+        """
+        # Ensure the simulation scene is constructed.
+        self._require_built()
+        link = self.get_link(name)
+        world_pos = self._numpy(link.get_pos())
+        world_quat = self._numpy(link.get_quat())
+        # Return world-space pose if no relative reference frame is requested.
+        if frame is None or frame == "world":
+            return world_pos, world_quat
+        ref_link = self.get_link(frame)
+        ref_pos = self._numpy(ref_link.get_pos())
+        ref_quat = self._numpy(ref_link.get_quat())
+        # Invert reference quaternion by conjugating its vector components.
+        ref_quat_inv = np.array([ref_quat[0], -ref_quat[1], -ref_quat[2], -ref_quat[3]], dtype=float)
+        norm = float(np.linalg.norm(ref_quat_inv))
+        if norm > 0.0:
+            ref_quat_inv /= norm
+        # Rotate world translation into the reference coordinate frame.
+        rel_pos = _quat_rotate(ref_quat_inv, world_pos - ref_pos)
+        # Multiply inverse reference quaternion by world quaternion.
+        rel_quat = _quat_multiply(ref_quat_inv, world_quat)
+        return rel_pos, rel_quat
 
     def get_camera(self, name: str) -> Any:
         """Look up a native Genesis camera for advanced sensor operations.
@@ -704,17 +813,20 @@ class MH3Simulation:
         position: Iterable[float],
         quaternion_wxyz: Iterable[float] | None = None,
         *,
+        frame: str | None = None,
         joints: Iterable[str] | None = None,
         apply: bool = False,
         **solver_options: Any,
     ) -> np.ndarray:
-        """Solve world-frame IK and optionally apply the full solution.
+        """Solve IK for an end-effector pose expressed in world space or a link frame.
         :param end_effector: Public link name of the target end effector.
         :type end_effector: str
-        :param position: Target XYZ position in the world frame.
+        :param position: Target XYZ position in the specified reference frame.
         :type position: Iterable[float]
-        :param quaternion_wxyz: Optional world-frame WXYZ orientation target.
+        :param quaternion_wxyz: Optional reference-frame WXYZ orientation target.
         :type quaternion_wxyz: Iterable[float] | None
+        :param frame: Reference link name for the target pose, or None for world space.
+        :type frame: str | None
         :param joints: Optional public joint names to vary during solving.
         :type joints: Iterable[str] | None
         :param apply: Command joint controllers to the solved targets when True.
@@ -727,6 +839,18 @@ class MH3Simulation:
         # Ensure the simulation scene is constructed.
         self._require_built()
         link = self.get_link(end_effector)
+        pos_target = np.asarray(tuple(position), dtype=float)
+        quat_target = None if quaternion_wxyz is None else np.asarray(tuple(quaternion_wxyz), dtype=float)
+        # Transform target pose from local reference link frame to world coordinates if specified.
+        if frame is not None and frame != "world":
+            ref_link = self.get_link(frame)
+            ref_pos = self._numpy(ref_link.get_pos())
+            ref_quat = self._numpy(ref_link.get_quat())
+            # Rotate position offset into world orientation and translate by reference link position.
+            pos_target = ref_pos + _quat_rotate(ref_quat, pos_target)
+            # Compose relative orientation with reference link world orientation if orientation is supplied.
+            if quat_target is not None:
+                quat_target = _quat_multiply(ref_quat, quat_target)
         dofs = None
         # Convert user-selected joint names to local articulation DOF indices if constrained.
         if joints is not None:
@@ -735,19 +859,23 @@ class MH3Simulation:
             if unknown:
                 raise KeyError(f"Unknown MH3 joints: {unknown}")
             dofs = [self._public_joint_indices[name] for name in joint_names]
+        # Seed solver with current articulation configuration unless custom init_qpos is specified.
+        options = dict(solver_options)
+        if "init_qpos" not in options:
+            options["init_qpos"] = self.robot.get_qpos()
         # Invoke Genesis numerical inverse kinematics solver.
         solution = self.robot.inverse_kinematics(
             link=link,
-            pos=np.asarray(tuple(position), dtype=float),
-            quat=None if quaternion_wxyz is None else np.asarray(tuple(quaternion_wxyz), dtype=float),
+            pos=pos_target,
+            quat=quat_target,
             dofs_idx_local=dofs,
-            **solver_options,
+            **options,
         )
         # Apply the solved configuration through joint position controllers so the robot moves physically.
         if apply:
             solution_arr = self._numpy(solution)
             target_joints = tuple(joints) if joints is not None else self.joint_names
-            targets = {name: float(solution_arr[self._public_joint_indices[name]]) for name in target_joints}
+            targets = {name: float(solution_arr[self._public_q_indices[name]]) for name in target_joints}
             self.set_joint_positions(targets)
         return self._numpy(solution)
 

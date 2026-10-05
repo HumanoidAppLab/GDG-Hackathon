@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from mh3_genesis import MH3Simulation, SimulatorConfig
+from mh3_genesis import MH3ControlPanel, MH3Simulation, SimulatorConfig
 
 
 def main() -> None:
@@ -47,18 +47,22 @@ def main() -> None:
     print(f"Available cameras ({len(sim.camera_names)}): {sim.camera_names}")
 
     # Set initial joint positions for the head and arms.
-    sim.set_joint_positions({
-        "head_yaw": 0.2,
-        "head_pitch": -0.2,
-        "slider": 0.1,
-    })
+    sim.set_joint_positions(
+        {
+            "head_yaw": 0.2,
+            "head_pitch": -0.2,
+            "slider": 0.1,
+        }
+    )
 
     # Close the fingers slightly on the left hand.
-    sim.set_joint_positions({
-        "left_index": 0.6,
-        "left_middle": 0.6,
-        "left_thumb_1": 0.5,
-    })
+    sim.set_joint_positions(
+        {
+            "left_index": 0.6,
+            "left_middle": 0.6,
+            "left_thumb_1": 0.5,
+        }
+    )
 
     # Command mobile base velocity (linear in m/s, angular in rad/s).
     sim.drive_base(linear_mps=0.1, angular_radps=0.0)
@@ -76,7 +80,7 @@ def main() -> None:
     for name, pos, vel in zip(joint_state.names, joint_state.positions, joint_state.velocities, strict=True):
         print(f"  {name}: pos={pos:.3f}, vel={vel:.3f}")
 
-    # Solve world-frame inverse kinematics for the left arm.
+    # Solve inverse kinematics for the left arm (expressed in world space by default, or relative to a link via frame="...").
     left_arm_joints = [f"left_{i}" for i in range(1, 8)]
     target_pos = (0.45, 0.25, 0.85)
     print(f"\n--- Inverse Kinematics ---\nSolving IK for 'left_gripper_base' to {target_pos}...")
@@ -116,14 +120,22 @@ def main() -> None:
     # Register the step hook callback.
     sim.add_step_hook(behavior_controller)
 
+    # Start the browser dashboard control panel.
+    panel = MH3ControlPanel(sim)
+    panel.start()
+    sim.add_step_hook(panel.update)
+
     # Run the simulation indefinitely so the viewer stays open for observation (stop with Ctrl+C).
     # To run for a fixed number of steps instead, pass steps (e.g. sim.run(steps=300)).
     # To run for a fixed duration of simulated time (e.g. 5.0 seconds), calculate steps as int(5.0 / sim.config.dt).
     print("\nRunning simulation indefinitely (press Ctrl+C in terminal to stop)...")
-    sim.run()
+    try:
+        sim.run()
+    finally:
+        # Shut down the web dashboard server cleanly on exit.
+        panel.close()
 
 
 if __name__ == "__main__":
     # Execute the demonstration routine.
     main()
-

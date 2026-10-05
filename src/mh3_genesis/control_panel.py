@@ -1,4 +1,5 @@
 """Serve the optional local dashboard for robot joints, drive, and cameras."""
+
 from __future__ import annotations
 
 import json
@@ -12,6 +13,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 from PIL import Image
@@ -34,6 +36,22 @@ _BASE_INTERNAL_JOINTS = frozenset(
         "right_castor_wheel_joint",
     }
 )
+_RECOMMENDED_END_EFFECTORS = (
+    "left_gripper_base",
+    "right_gripper_base",
+    "left_index_tip",
+    "right_index_tip",
+    "left_thumb_tip",
+    "right_thumb_tip",
+)
+_RECOMMENDED_FRAMES = (
+    "mobile_base",
+    "torso_base",
+    "linear_actuator_base",
+    "left_arm_base",
+    "right_arm_base",
+)
+
 
 class MH3ControlPanel:
     """Queue local browser commands for application on the simulation thread.
@@ -58,6 +76,8 @@ class MH3ControlPanel:
         self._token = secrets.token_urlsafe(24)
         # Initialize internal buffers for queued joint targets and mobile base drive commands.
         self._pending_positions: dict[str, float] = {}
+        self._pending_ik: dict[str, Any] | None = None
+        self._last_ik_status: str | None = None
         self._drive = (0.0, 0.0)
         self._drive_changed = False
         self._drive_active = False
@@ -88,9 +108,9 @@ class MH3ControlPanel:
             high = float(high) if math.isfinite(high) else fallback
             limits[name] = (low, high)
         self._limits = limits
-        # Cache initial home positions and seed current positions from measured state.
+        # Cache true initial home positions from simulation startup and seed current positions from measured state.
         self._home = {
-            name: float(simulation.config.initial_positions.get(name, value))
+            name: float(simulation.home_positions.get(name, simulation.config.initial_positions.get(name, value)))
             for name, value in zip(state.names, state.positions, strict=True)
         }
         self._positions = {name: float(value) for name, value in zip(state.names, state.positions, strict=True)}
@@ -115,11 +135,13 @@ class MH3ControlPanel:
         if self._server is not None:
             return
         panel = self
+
         class Handler(BaseHTTPRequestHandler):
             """Handle local dashboard HTML, state, camera, and command requests.
             :return: Request handler bound to the control panel.
             :rtype: Handler
             """
+
             def do_GET(self) -> None:
                 """Serve the dashboard, simulation state, or a camera feed.
                 :return: None after sending an HTTP response.
@@ -138,6 +160,31 @@ class MH3ControlPanel:
                 # Return current robot joint states and simulation timing as JSON.
                 elif self.path == "/api/state":
                     self._send(json.dumps(panel.state()), "application/json")
+                # Return 3D position and orientation for a requested link and reference frame.
+                elif self.path.startswith("/api/link-pose"):
+                    parsed = urlparse(self.path)
+                    params = parse_qs(parsed.query)
+                    link = params.get("link", [None])[0]
+                    frame = params.get("frame", [None])[0]
+                    if not link or link not in panel.simulation.link_names:
+                        self.send_error(HTTPStatus.BAD_REQUEST, "Missing or unknown link")
+                        return
+                    clean_frame = None if not frame or frame == "world" else frame
+                    if clean_frame is not None and clean_frame not in panel.simulation.link_names:
+                        self.send_error(HTTPStatus.BAD_REQUEST, "Unknown reference frame link")
+                        return
+                    try:
+                        pos, quat = panel.simulation.get_link_pose(link, frame=clean_frame)
+                        payload = {
+                            "link": link,
+                            "frame": clean_frame,
+                            "position": [float(p) for p in pos],
+                            "quaternion": [float(q) for q in quat],
+                        }
+                        self._send(json.dumps(payload), "application/json")
+                    except (KeyError, ValueError, RuntimeError) as error:
+                        self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(error))
+                        return
                 # Return binary JPEG or PNG frames for requested camera streams.
                 elif self.path.startswith("/api/camera/"):
                     name = self.path.removeprefix("/api/camera/")
@@ -174,6 +221,14 @@ class MH3ControlPanel:
                         panel.queue_drive(body.get("linear", 0.0), body.get("angular", 0.0))
                     elif self.path == "/api/home":
                         panel.queue_home()
+                    elif self.path == "/api/ik":
+                        panel.queue_ik(
+                            end_effector=body.get("end_effector"),
+                            position=body.get("position", []),
+                            quaternion=body.get("quaternion"),
+                            frame=body.get("frame"),
+                            joints=body.get("joints"),
+                        )
                     else:
                         self.send_error(HTTPStatus.NOT_FOUND)
                         return
@@ -214,6 +269,7 @@ class MH3ControlPanel:
                 :rtype: None
                 """
                 return
+
         # Bind the HTTP server to loopback on an ephemeral port.
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         # Run server request handling on a dedicated background thread.
@@ -265,6 +321,10 @@ class MH3ControlPanel:
                 "sim_time": self.simulation.sim_time,
                 "camera_sources": list(self._camera_pairs),
                 "camera_error": self._camera_error,
+                "ik_status": self._last_ik_status,
+                "end_effectors": [name for name in _RECOMMENDED_END_EFFECTORS if name in self.simulation.link_names],
+                "frames": [name for name in _RECOMMENDED_FRAMES if name in self.simulation.link_names],
+                "all_links": list(self.simulation.link_names),
             }
 
     @property
@@ -414,6 +474,69 @@ class MH3ControlPanel:
         # Immediately command base velocities to zero.
         self.queue_drive(0.0, 0.0)
 
+    def queue_ik(
+        self,
+        end_effector: str,
+        position: Any,
+        quaternion: Any = None,
+        frame: Any = None,
+        joints: Any = None,
+    ) -> None:
+        """Validate and queue an inverse kinematics target for execution.
+        :param end_effector: Public link name of the target end effector.
+        :type end_effector: str
+        :param position: Target XYZ coordinates in the chosen reference frame.
+        :type position: Any
+        :param quaternion: Optional orientation quaternion (W, X, Y, Z) in the chosen frame.
+        :type quaternion: Any
+        :param frame: Reference link name for the target pose, or None for world space.
+        :type frame: Any
+        :param joints: Controllable joint names to vary, or None to auto-select arm joints.
+        :type joints: Any
+        :return: None after queuing the request.
+        :rtype: None
+        """
+        # Validate that the requested end effector is a known robot link.
+        if end_effector not in self.simulation.link_names:
+            raise KeyError(f"Unknown end effector link: {end_effector}")
+        pos_tuple = tuple(float(coord) for coord in position)
+        if len(pos_tuple) != 3 or not all(math.isfinite(coord) for coord in pos_tuple):
+            raise ValueError("IK target position must contain exactly three finite numbers (X, Y, Z)")
+        # Validate target orientation quaternion if supplied.
+        quat_tuple: tuple[float, float, float, float] | None = None
+        if quaternion is not None:
+            quat_tuple = tuple(float(coord) for coord in quaternion)
+            if len(quat_tuple) != 4 or not all(math.isfinite(coord) for coord in quat_tuple):
+                raise ValueError("IK target quaternion must contain exactly four finite numbers (W, X, Y, Z)")
+        # Normalize empty string or 'world' frame to None.
+        clean_frame: str | None = None if not frame or frame == "world" else str(frame)
+        if clean_frame is not None and clean_frame not in self.simulation.link_names:
+            raise KeyError(f"Unknown reference frame link: {clean_frame}")
+        # Resolve joint constraints based on user choice or auto-detection.
+        joint_subset: list[str] | None = None
+        if isinstance(joints, list) and joints:
+            joint_subset = [str(j) for j in joints]
+        elif joints == "left":
+            joint_subset = [f"left_{i}" for i in range(1, 8)]
+        elif joints == "right":
+            joint_subset = [f"right_{i}" for i in range(1, 8)]
+        elif joints == "all":
+            joint_subset = None
+        elif "left" in end_effector:
+            joint_subset = [f"left_{i}" for i in range(1, 8)]
+        elif "right" in end_effector:
+            joint_subset = [f"right_{i}" for i in range(1, 8)]
+        # Store pending request and initial status under lock.
+        with self._lock:
+            self._pending_ik = {
+                "end_effector": end_effector,
+                "position": pos_tuple,
+                "quaternion": quat_tuple,
+                "frame": clean_frame,
+                "joints": joint_subset,
+            }
+            self._last_ik_status = f"Solving IK for {end_effector}…"
+
     def update(self, simulation: MH3Simulation) -> None:
         """Apply queued commands and refresh dashboard state after a step.
         :param simulation: Simulation invoking this registered step hook.
@@ -422,6 +545,29 @@ class MH3ControlPanel:
         :rtype: None
         """
         now = time.monotonic()
+        # Retrieve and clear any pending inverse kinematics request under lock.
+        with self._lock:
+            pending_ik = self._pending_ik
+            self._pending_ik = None
+        if pending_ik is not None:
+            try:
+                # Solve inverse kinematics and apply target joint positions on the simulation thread.
+                simulation.solve_ik(
+                    end_effector=pending_ik["end_effector"],
+                    position=pending_ik["position"],
+                    quaternion_wxyz=pending_ik.get("quaternion"),
+                    frame=pending_ik["frame"],
+                    joints=pending_ik["joints"],
+                    apply=True,
+                )
+                with self._lock:
+                    frame_label = pending_ik["frame"] or "world"
+                    pos_str = f"({pending_ik['position'][0]:.2f}, {pending_ik['position'][1]:.2f}, {pending_ik['position'][2]:.2f})"
+                    self._last_ik_status = f"Applied {pending_ik['end_effector']} to {pos_str} [{frame_label}]"
+            except Exception as error:
+                logger.exception("Inverse kinematics solver failed")
+                with self._lock:
+                    self._last_ik_status = f"IK failed: {error}"
         # Retrieve and clear pending position and drive commands under lock.
         with self._lock:
             positions = self._pending_positions
@@ -464,6 +610,7 @@ class MH3ControlPanel:
             finally:
                 self._last_camera_render_at = time.monotonic()
 
+
 def _html(token: str, max_linear: float, max_angular: float) -> str:
     """Render dashboard HTML with drive limits and a private command token.
     :param token: Per-server token required for command POST requests.
@@ -484,11 +631,28 @@ def _html(token: str, max_linear: float, max_angular: float) -> str:
 <title>MH3 Controls</title><style>
 {STYLE}
 </style></head><body><header><h1>MH3 Control Panel</h1><span id="status">Connecting…</span></header><main>
-<section class="card"><h2>Base drive</h2><div class="speed">
+<div class="sidebar"><section class="card"><h2>Base drive</h2><div class="speed">
 <label>Linear<input id="linear" type="range" min="{linear_step}" max="{max_linear}" step="{linear_step}" value="{max_linear}"><output>{max_linear:.2f}</output></label>
 <label>Angular<input id="angular" type="range" min="{angular_step}" max="{max_angular}" step="{angular_step}" value="{max_angular}"><output>{max_angular:.2f}</output></label></div>
 <div class="drive-grid"><i></i><button data-drive="forward">▲</button><i></i><button data-drive="left">◀</button><button class="stop" data-drive="stop">■</button><button data-drive="right">▶</button><i></i><button data-drive="back">▼</button></div>
 <button class="home" id="home">Return all joints home</button><p class="hint">Hold the buttons or W/A/S/D to drive. Releasing a control stops the base automatically.</p></section>
+<section class="card" id="ik-panel"><h2>Inverse kinematics (IK) tester</h2>
+<label class="field-label">End effector<select id="ik-ee"></select></label>
+<label class="field-label">Reference frame<select id="ik-frame"><option value="">World space (None)</option></select></label>
+<div class="field-label">Target position (X, Y, Z)<div class="coord-row">
+<label><span>X</span><input id="ik-x" type="number" step="0.01" value="0.45"></label>
+<label><span>Y</span><input id="ik-y" type="number" step="0.01" value="0.25"></label>
+<label><span>Z</span><input id="ik-z" type="number" step="0.01" value="0.85"></label>
+</div></div>
+<label class="orient-check"><input type="checkbox" id="ik-orient" checked> Lock orientation</label>
+<label class="field-label">Constrain joints<select id="ik-joints">
+<option value="auto">Auto (arm joints)</option>
+<option value="left">Left arm (left_1–7)</option>
+<option value="right">Right arm (right_1–7)</option>
+<option value="all">All controllable joints</option>
+</select></label>
+<div class="ik-buttons"><button type="button" id="ik-read">Read pose</button><button type="button" id="ik-solve" class="btn-primary">Apply IK</button></div>
+<p class="hint" id="ik-status">Ready to solve IK.</p></section></div>
 <div class="workspace"><section class="card" id="camera-panel"><h2>Camera feeds</h2>
 <div class="camera-row" id="head-cameras"><h3>Head cameras</h3><div class="camera-grid"><figure><img id="head-left-rgb" alt="Head left RGB camera feed"><figcaption>Left RGB</figcaption></figure><figure><img id="head-right-rgb" alt="Head right RGB camera feed"><figcaption>Right RGB</figcaption></figure><figure><img id="head-depth" alt="Head depth camera feed"><figcaption>Left camera depth</figcaption></figure></div></div>
 <div class="camera-row" id="base-cameras"><h3>Base cameras</h3><div class="camera-grid"><figure><img id="base-left-rgb" alt="Base left RGB camera feed"><figcaption>Left RGB</figcaption></figure><figure><img id="base-right-rgb" alt="Base right RGB camera feed"><figcaption>Right RGB</figcaption></figure><figure><img id="base-depth" alt="Base depth camera feed"><figcaption>Left camera depth</figcaption></figure></div></div><p class="hint" id="camera-status">Waiting for camera frames… Near depth is bright; beyond 5 m is dark.</p></section>
