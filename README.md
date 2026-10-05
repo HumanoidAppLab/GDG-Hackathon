@@ -1,6 +1,6 @@
 # MH3 Genesis Hackathon Starter
 
-This repository is a self-contained, Python-based starting point for building projects with the [Mirsee Robotics](https://mirsee.com "Mirsee Robotics Inc.") MH3 in [Genesis World](https://genesis-embodied-ai.github.io "Genesis World"). It includes the simulated MH3, a default world with a floor, a browser dashboard, and a Python API for controlling and observing the robot.
+This repository is a self-contained, Python-based starting point for building projects with the [Mirsee Robotics](https://mirsee.com "Mirsee Robotics Inc.") MH3 in [Genesis World](https://github.com/Genesis-Embodied-AI/genesis-world "Genesis World"). It includes the simulated MH3, a default world with a floor, a browser dashboard, and a Python API for controlling and observing the robot.
 
 ## Setup and Run
 
@@ -48,10 +48,10 @@ uv run hello_mh3.py
 
 ## Upgrading
 
-To update dependencies to the latest [Genesis World](https://genesis-embodied-ai.github.io "Genesis World") release:
+To update dependencies to the latest [Genesis World](https://github.com/Genesis-Embodied-AI/genesis-world "Genesis World") release:
 
 > [!NOTE]
-> In most cases you should only try upgrading if a newer release of [Genesis World](https://genesis-embodied-ai.github.io "Genesis World") has a feature or bug fix you need. Before upgrading, back up your current project.
+> In most cases you should only try upgrading if a newer release of [Genesis World](https://github.com/Genesis-Embodied-AI/genesis-world "Genesis World") has a feature or bug fix you need. Before upgrading, back up your current project.
 
 **Linux / Apple Silicon macOS:**
 ```bash
@@ -213,4 +213,4 @@ finally:
     panel.close()
 ```
 
-Advanced projects can also directly access `sim.scene`, `sim.robot`, `sim.floor`, and `sim.gs` for any native [Genesis World](https://genesis-embodied-ai.github.io "Genesis World") feature.
+Advanced projects can also directly access `sim.scene`, `sim.robot`, `sim.floor`, and `sim.gs` for any native [Genesis World](https://github.com/Genesis-Embodied-AI/genesis-world "Genesis World") feature.
