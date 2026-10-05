@@ -111,8 +111,8 @@ class SimulatorConfig:
     gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
     spawn_position: tuple[float, float, float] = (0.0, 0.0, 0.0)
     spawn_euler_deg: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    position_kp: float = 120.0
-    position_kv: float = 12.0
+    position_kp: float = 350.0
+    position_kv: float = 35.0
     slider_position_kp: float = 350000.0
     slider_position_kv: float = 4000.0
     slider_max_velocity_mps: float = 0.008

@@ -10,6 +10,8 @@ let feedsBusy = false;
 let ikBuilt = false;
 let ikSolving = false;
 let currentQuat = null;
+let currentPos = null;
+let currentPosClean = true;
 
 /**
  * Send a dashboard command to the local simulation server.
@@ -191,6 +193,10 @@ function buildIk(state)
 
     eeSelect.onchange = () => readCurrentPose();
     frameSelect.onchange = () => readCurrentPose();
+    for (const id of ['#ik-x', '#ik-y', '#ik-z'])
+    {
+        document.querySelector(id)?.addEventListener('input', () => { currentPosClean = false; });
+    }
     ikBuilt = true;
     readCurrentPose();
 }
@@ -215,13 +221,15 @@ async function readCurrentPose()
         if (!response.ok) throw new Error(await response.text());
         const data = await response.json();
         currentQuat = data.quaternion;
-        document.querySelector('#ik-x').value = data.position[0].toFixed(3);
-        document.querySelector('#ik-y').value = data.position[1].toFixed(3);
-        document.querySelector('#ik-z').value = data.position[2].toFixed(3);
+        currentPos = data.position;
+        currentPosClean = true;
+        document.querySelector('#ik-x').value = data.position[0].toFixed(4);
+        document.querySelector('#ik-y').value = data.position[1].toFixed(4);
+        document.querySelector('#ik-z').value = data.position[2].toFixed(4);
         if (statusElem && !ikSolving)
         {
             const frameLabel = frame || 'world';
-            statusElem.textContent = `Pose for ${ee} in ${frameLabel}: (${data.position[0].toFixed(2)}, ${data.position[1].toFixed(2)}, ${data.position[2].toFixed(2)})`;
+            statusElem.textContent = `Pose for ${ee} in ${frameLabel}: (${data.position[0].toFixed(3)}, ${data.position[1].toFixed(3)}, ${data.position[2].toFixed(3)})`;
         }
     }
     catch (error)
@@ -245,6 +253,7 @@ async function applyIk()
     const statusElem = document.querySelector('#ik-status');
     const lockOrient = document.querySelector('#ik-orient')?.checked;
     const quat = lockOrient && currentQuat ? currentQuat : null;
+    const pos = (currentPosClean && currentPos) ? currentPos : [x, y, z];
 
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z))
     {
@@ -257,7 +266,7 @@ async function applyIk()
     {
         const response = await post('/api/ik', {
             end_effector: ee,
-            position: [x, y, z],
+            position: pos,
             quaternion: quat,
             frame: frame,
             joints: jointsChoice,

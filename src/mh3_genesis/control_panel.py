@@ -640,9 +640,9 @@ def _html(token: str, max_linear: float, max_angular: float) -> str:
 <label class="field-label">End effector<select id="ik-ee"></select></label>
 <label class="field-label">Reference frame<select id="ik-frame"><option value="">World space (None)</option></select></label>
 <div class="field-label">Target position (X, Y, Z)<div class="coord-row">
-<label><span>X</span><input id="ik-x" type="number" step="0.01" value="0.45"></label>
-<label><span>Y</span><input id="ik-y" type="number" step="0.01" value="0.25"></label>
-<label><span>Z</span><input id="ik-z" type="number" step="0.01" value="0.85"></label>
+<label><span>X</span><input id="ik-x" type="number" step="0.001" value="0.45"></label>
+<label><span>Y</span><input id="ik-y" type="number" step="0.001" value="0.25"></label>
+<label><span>Z</span><input id="ik-z" type="number" step="0.001" value="0.85"></label>
 </div></div>
 <label class="orient-check"><input type="checkbox" id="ik-orient" checked> Lock orientation</label>
 <label class="field-label">Constrain joints<select id="ik-joints">

@@ -863,6 +863,13 @@ class MH3Simulation:
         options = dict(solver_options)
         if "init_qpos" not in options:
             options["init_qpos"] = self.robot.get_qpos()
+        # Enforce high-precision convergence criteria for consistent kinematic solutions.
+        if "pos_tol" not in options:
+            options["pos_tol"] = 1e-4
+        if "rot_tol" not in options:
+            options["rot_tol"] = 1e-4
+        if "max_solver_iters" not in options:
+            options["max_solver_iters"] = 40
         # Invoke Genesis numerical inverse kinematics solver.
         solution = self.robot.inverse_kinematics(
             link=link,
