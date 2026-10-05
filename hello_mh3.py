@@ -83,7 +83,9 @@ def main() -> None:
     for name, pos, vel in zip(joint_state.names, joint_state.positions, joint_state.velocities, strict=True):
         print(f"  {name}: pos={pos:.3f}, vel={vel:.3f}")
 
-    # Solve inverse kinematics for the left arm (expressed in world space by default, or relative to a link via frame="...").
+    # Solve inverse kinematics for the left arm.
+    # Supports target position, orientation (Euler angles or quaternion), and reference frames (default: world space).
+    # Passing position=None solves for orientation while automatically holding the current end-effector position.
     left_arm_joints = [f"left_{i}" for i in range(1, 8)]
     target_pos = (0.45, 0.25, 0.85)
     print(f"\n--- Inverse Kinematics ---\nSolving IK for 'left_gripper_base' to {target_pos}...")

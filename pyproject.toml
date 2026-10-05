@@ -12,6 +12,7 @@ dependencies = [
     "numpy==2.5.3",
     "pillow==11.3.0",
     "pyyaml==6.0.3",
+    "scipy==1.18.1",
     "torch==2.14.1",
 ]
 
@@ -24,6 +25,7 @@ target-version = "py313"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-p no:launch_ros -p no:launch_testing"
 
 [tool.uv]
 prerelease = "disallow"

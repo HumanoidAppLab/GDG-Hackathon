@@ -181,6 +181,7 @@ sim.stop_base()
 joint_state = sim.get_joint_state(["head_yaw", "head_pitch", "slider"])
 
 # 6. Inverse Kinematics (IK) for arm manipulation (world space by default, or frame="link_name").
+# Supports target position, orientation (Euler or quaternion), or position=None to re-orient in place.
 left_arm_joints = [f"left_{i}" for i in range(1, 8)]
 solution = sim.solve_ik(
     end_effector="left_gripper_base",
