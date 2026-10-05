@@ -1,10 +1,10 @@
 # MH3 Genesis Hackathon Starter
 
-This repository is a self-contained, ROS-free starting point for building projects with the [Mirsee Robotics](https://mirsee.com "Mirsee Robotics Inc.") MH3 in [Genesis](https://genesis-embodied-ai.github.io/). It includes the simulated MH3, a default world with a floor, a browser dashboard, and a Python API for controlling and observing the robot.
+This repository is a self-contained, Python-based starting point for building projects with the [Mirsee Robotics](https://mirsee.com "Mirsee Robotics Inc.") MH3 in [Genesis](https://genesis-embodied-ai.github.io/). It includes the simulated MH3, a default world with a floor, a browser dashboard, and a Python API for controlling and observing the robot.
 
 ## Setup and run
 
-Run the setup script for your platform. It installs uv locally if needed, downloads the pinned Python automatically, installs the frozen release, selects compatible accelerator dependencies, and verifies the bundled robot, physics, and a camera's RGB/depth rendering. No system Python, ROS installation, administrator access, or terminal restart is needed for the Python environment.
+Run the setup script for your platform. It installs uv locally if needed, downloads the pinned Python automatically, installs the pinned [Genesis](https://genesis-embodied-ai.github.io/) release, selects compatible accelerator dependencies, and verifies the bundled robot, physics, and a camera's RGB/depth rendering.
 
 ```bash
 # Linux x64 or Apple Silicon macOS
@@ -18,9 +18,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 .\run.ps1
 ```
 
-This release targets Windows 10+ x64, Linux x64 with glibc 2.28+, and Apple Silicon with macOS 14+. Intel Macs, native Windows ARM, Linux ARM, 32-bit systems, and Alpine/musl lack wheels required by the pinned dependency stack. Setup checks these limits before installing simulation packages. These are dependency-supported targets; verify each intended machine before the event. Windows on ARM running an x64 environment has not been validated.
+This targets Windows 10+ x64, Linux x64 with glibc 2.28+, and Apple Silicon with macOS 14+. Intel Macs, native Windows ARM, Linux ARM, 32-bit systems, and Alpine/musl lack wheels required by the pinned dependency stack.
 
-Internet access and several GB of free disk space are needed for the initial download. Linux needs `curl` or `wget` for uv bootstrapping. A working graphics driver and OpenGL/EGL runtime are needed for the viewer and cameras, including when physics runs on the CPU. GPU drivers and OS graphics libraries are system prerequisites: setup reports recovery instructions rather than installing system software. On Ubuntu/Debian the graphics runtime packages include `libgl1`, `libegl1`, and `libglib2.0-0`; on WSL use WSLg and updated Windows GPU drivers. See [Genesis installation requirements](https://genesis-world.readthedocs.io/en/latest/user_guide/overview/installation.html).
+Linux needs `curl` or `wget` for uv bootstrapping. A working graphics driver and OpenGL/EGL runtime are needed for the viewer and cameras, including when physics runs on the CPU. GPU drivers and OS graphics libraries are system prerequisites: setup reports recovery instructions rather than installing system software. On Ubuntu/Debian the graphics runtime packages include `libgl1`, `libegl1`, and `libglib2.0-0`; on WSL use WSLg and updated Windows GPU drivers. See [Genesis installation requirements](https://genesis-world.readthedocs.io/en/latest/user_guide/overview/installation.html).
 
 Setup uses `.python-version` and leaves `pyproject.toml` and `uv.lock` unchanged. On fresh installations, PyTorch-only accelerator libraries are deferred until hardware selection, avoiding unnecessary CUDA 13 downloads on CPU-only machines. Genesis's own native dependencies are still installed. A working, compatible PyTorch accelerator wheel is kept. If another accelerator is needed, its complete dependency graph is resolved while the release's non-accelerator versions remain pinned. If acceleration fails, setup tries CPU physics; graphics failures still need the system graphics runtime repaired. Use `bash setup.sh --cpu` or `powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 --cpu` to request CPU PyTorch and physics explicitly.
 

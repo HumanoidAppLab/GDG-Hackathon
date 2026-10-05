@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Steven Rice", email = "srice@datarealminc.com" }
 ]
-requires-python = ">=3.13.15,<3.14"
+requires-python = ">=3.13.16,<3.14"
 dependencies = [
     "genesis-world[usd]==1.4.3",
     "numpy==2.5.3",
@@ -28,13 +28,13 @@ testpaths = ["tests"]
 [tool.uv]
 prerelease = "disallow"
 [build-system]
-requires = ["uv_build==0.12.21"]
+requires = ["uv_build==0.12.23"]
 build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
     "packaging==26.3",
     "pytest==9.1.1",
-    "ruff==0.16.9",
+    "ruff==0.16.10",
     "tomlkit==0.15.1",
 ]
