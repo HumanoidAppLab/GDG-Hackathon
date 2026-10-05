@@ -119,6 +119,16 @@ Discover all link identifiers using `sim.link_names` before passing one to `sim.
 
 ## Using the API
 
+### Running custom scripts
+
+After running setup, execute your custom scripts with `uv run` so all project dependencies and environment configurations are used:
+
+```bash
+uv run python my_script.py
+```
+
+### API usage example
+
 Import `MH3Simulation` in your own script and use the simulator directly:
 
 ```python
@@ -159,7 +169,7 @@ qpos = sim.solve_ik(
 sim.run()
 ```
 
-`drive_base()` and `stop_base()` allow you to drive the robot. `solve_ik` accepts an optional world-frame `quaternion_wxyz`, plus any Genesis IK keyword such as `pos_tol`, `rot_tol`, or `max_solver_iters`. By default it only returns a solution; `apply=True` teleports the articulation to it.
+`drive_base()` and `stop_base()` allow you to drive the robot. `solve_ik` accepts an optional world-frame `quaternion_wxyz`, plus any [Genesis IK](https://genesis-world.readthedocs.io/en/latest/user_guide/robot_control/inverse_kinematics_motion_planning.html "Genesis World - Inverse Kinematics") keyword such as `pos_tol`, `rot_tol`, or `max_solver_iters`. By default it only returns a solution; `apply=True` teleports the articulation to it.
 
 For event-style projects, register any number of per-step callbacks:
 
@@ -178,7 +188,7 @@ sim.add_step_hook(controller)
 sim.run()
 ```
 
-Scene hooks add world geometry before Genesis compiles the scene:
+Scene hooks add world geometry before [Genesis World](https://genesis-embodied-ai.github.io "Genesis World") compiles the scene:
 
 ```python
 sim = MH3Simulation(config)
@@ -196,4 +206,4 @@ sim.add_scene_hook(add_world)
 sim.build().run()
 ```
 
-Advanced projects can also use `sim.scene`, `sim.robot`, `sim.floor`, and `sim.gs` for any other native Genesis feature.
+Advanced projects can also use `sim.scene`, `sim.robot`, `sim.floor`, and `sim.gs` for any other native [Genesis World](https://genesis-embodied-ai.github.io "Genesis World") feature.
