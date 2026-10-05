@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 from PIL import Image
+from scipy.spatial.transform import Rotation
 
 from .dashboard_script import SCRIPT
 from .dashboard_style import STYLE
@@ -175,11 +176,15 @@ class MH3ControlPanel:
                         return
                     try:
                         pos, quat = panel.simulation.get_link_pose(link, frame=clean_frame)
+                        # Compute Euler angles (roll, pitch, yaw in degrees) following extrinsic XYZ convention.
+                        rot = Rotation.from_quat([quat[1], quat[2], quat[3], quat[0]])
+                        euler_deg = rot.as_euler("xyz", degrees=True)
                         payload = {
                             "link": link,
                             "frame": clean_frame,
                             "position": [float(p) for p in pos],
                             "quaternion": [float(q) for q in quat],
+                            "euler_deg": [float(e) for e in euler_deg],
                         }
                         self._send(json.dumps(payload), "application/json")
                     except (KeyError, ValueError, RuntimeError) as error:
@@ -224,10 +229,12 @@ class MH3ControlPanel:
                     elif self.path == "/api/ik":
                         panel.queue_ik(
                             end_effector=body.get("end_effector"),
-                            position=body.get("position", []),
+                            position=body.get("position"),
+                            orientation=body.get("orientation"),
                             quaternion=body.get("quaternion"),
                             frame=body.get("frame"),
                             joints=body.get("joints"),
+                            euler_degrees=bool(body.get("euler_degrees", False)),
                         )
                     else:
                         self.send_error(HTTPStatus.NOT_FOUND)
@@ -477,37 +484,54 @@ class MH3ControlPanel:
     def queue_ik(
         self,
         end_effector: str,
-        position: Any,
+        position: Any = None,
+        orientation: Any = None,
         quaternion: Any = None,
         frame: Any = None,
         joints: Any = None,
+        euler_degrees: bool = True,
     ) -> None:
         """Validate and queue an inverse kinematics target for execution.
         :param end_effector: Public link name of the target end effector.
         :type end_effector: str
-        :param position: Target XYZ coordinates in the chosen reference frame.
+        :param position: Target XYZ coordinates in the chosen frame, or None to keep current position.
         :type position: Any
-        :param quaternion: Optional orientation quaternion (W, X, Y, Z) in the chosen frame.
+        :param orientation: Optional orientation target as Euler angles or quaternion.
+        :type orientation: Any
+        :param quaternion: Optional backward-compatible quaternion alias.
         :type quaternion: Any
         :param frame: Reference link name for the target pose, or None for world space.
         :type frame: Any
         :param joints: Controllable joint names to vary, or None to auto-select arm joints.
         :type joints: Any
+        :param euler_degrees: Interpret 3-element Euler angles as degrees when True.
+        :type euler_degrees: bool
         :return: None after queuing the request.
         :rtype: None
         """
         # Validate that the requested end effector is a known robot link.
         if end_effector not in self.simulation.link_names:
             raise KeyError(f"Unknown end effector link: {end_effector}")
-        pos_tuple = tuple(float(coord) for coord in position)
-        if len(pos_tuple) != 3 or not all(math.isfinite(coord) for coord in pos_tuple):
-            raise ValueError("IK target position must contain exactly three finite numbers (X, Y, Z)")
-        # Validate target orientation quaternion if supplied.
-        quat_tuple: tuple[float, float, float, float] | None = None
-        if quaternion is not None:
-            quat_tuple = tuple(float(coord) for coord in quaternion)
-            if len(quat_tuple) != 4 or not all(math.isfinite(coord) for coord in quat_tuple):
-                raise ValueError("IK target quaternion must contain exactly four finite numbers (W, X, Y, Z)")
+        # Parse target position if supplied.
+        pos_tuple: tuple[float, float, float] | None = None
+        if position is not None:
+            pos_coords = tuple(float(coord) for coord in position)
+            if len(pos_coords) != 3 or not all(math.isfinite(coord) for coord in pos_coords):
+                raise ValueError("IK target position must contain exactly three finite numbers (X, Y, Z)")
+            pos_tuple = pos_coords
+        # Parse target orientation if supplied as either Euler angles or a quaternion.
+        orient_tuple: tuple[float, ...] | None = None
+        raw_orient = quaternion if orientation is None else orientation
+        if raw_orient is not None:
+            orient_coords = tuple(float(coord) for coord in raw_orient)
+            if len(orient_coords) not in (3, 4) or not all(math.isfinite(coord) for coord in orient_coords):
+                raise ValueError(
+                    "IK target orientation must contain 3 (Euler angles) or 4 (quaternion WXYZ) finite numbers"
+                )
+            orient_tuple = orient_coords
+        # Verify that at least one target criterion was provided.
+        if pos_tuple is None and orient_tuple is None:
+            raise ValueError("At least one of target position or target orientation must be provided")
         # Normalize empty string or 'world' frame to None.
         clean_frame: str | None = None if not frame or frame == "world" else str(frame)
         if clean_frame is not None and clean_frame not in self.simulation.link_names:
@@ -531,9 +555,10 @@ class MH3ControlPanel:
             self._pending_ik = {
                 "end_effector": end_effector,
                 "position": pos_tuple,
-                "quaternion": quat_tuple,
+                "orientation": orient_tuple,
                 "frame": clean_frame,
                 "joints": joint_subset,
+                "euler_degrees": euler_degrees,
             }
             self._last_ik_status = f"Solving IK for {end_effector}…"
 
@@ -555,15 +580,29 @@ class MH3ControlPanel:
                 simulation.solve_ik(
                     end_effector=pending_ik["end_effector"],
                     position=pending_ik["position"],
-                    quaternion_wxyz=pending_ik.get("quaternion"),
+                    orientation=pending_ik.get("orientation"),
                     frame=pending_ik["frame"],
                     joints=pending_ik["joints"],
+                    euler_degrees=pending_ik.get("euler_degrees", False),
                     apply=True,
                 )
                 with self._lock:
                     frame_label = pending_ik["frame"] or "world"
-                    pos_str = f"({pending_ik['position'][0]:.2f}, {pending_ik['position'][1]:.2f}, {pending_ik['position'][2]:.2f})"
-                    self._last_ik_status = f"Applied {pending_ik['end_effector']} to {pos_str} [{frame_label}]"
+                    desc_parts = []
+                    if pending_ik["position"] is not None:
+                        p = pending_ik["position"]
+                        desc_parts.append(f"pos=({p[0]:.2f}, {p[1]:.2f}, {p[2]:.2f})")
+                    else:
+                        desc_parts.append("held position")
+                    if pending_ik.get("orientation") is not None:
+                        o = pending_ik["orientation"]
+                        if len(o) == 3:
+                            desc_parts.append(f"rot=({o[0]:.1f}°, {o[1]:.1f}°, {o[2]:.1f}°)")
+                        else:
+                            desc_parts.append(f"quat=({o[0]:.2f}, {o[1]:.2f}, {o[2]:.2f}, {o[3]:.2f})")
+                    self._last_ik_status = (
+                        f"Applied {pending_ik['end_effector']} {', '.join(desc_parts)} [{frame_label}]"
+                    )
             except Exception as error:
                 logger.exception("Inverse kinematics solver failed")
                 with self._lock:
@@ -639,12 +678,34 @@ def _html(token: str, max_linear: float, max_angular: float) -> str:
 <section class="card" id="ik-panel"><h2>Inverse kinematics (IK) tester</h2>
 <label class="field-label">End effector<select id="ik-ee"></select></label>
 <label class="field-label">Reference frame<select id="ik-frame"><option value="">World space (None)</option></select></label>
-<div class="field-label">Target position (X, Y, Z)<div class="coord-row">
+<div class="ik-target-header">
+<label class="orient-check"><input type="checkbox" id="ik-solve-pos" checked> <span>Solve Position</span></label>
+</div>
+<div class="coord-row" id="ik-pos-row">
 <label><span>X</span><input id="ik-x" type="number" step="0.001" value="0.45"></label>
 <label><span>Y</span><input id="ik-y" type="number" step="0.001" value="0.25"></label>
 <label><span>Z</span><input id="ik-z" type="number" step="0.001" value="0.85"></label>
-</div></div>
-<label class="orient-check"><input type="checkbox" id="ik-orient" checked> Lock orientation</label>
+</div>
+<div class="ik-target-header">
+<label class="orient-check"><input type="checkbox" id="ik-solve-orient"> <span>Solve Orientation</span></label>
+<select id="ik-orient-mode" style="display:none;width:auto;padding:2px 6px;font-size:11px;margin:0">
+<option value="euler">Euler (°)</option>
+<option value="quat">Quat (WXYZ)</option>
+</select>
+</div>
+<div id="ik-orient-container" style="display:none">
+<div class="coord-row" id="ik-euler-row">
+<label><span>R</span><input id="ik-roll" type="number" step="1.0" value="0.0"></label>
+<label><span>P</span><input id="ik-pitch" type="number" step="1.0" value="0.0"></label>
+<label><span>Y</span><input id="ik-yaw" type="number" step="1.0" value="0.0"></label>
+</div>
+<div class="coord-row quat-row" id="ik-quat-row" style="display:none">
+<label><span>W</span><input id="ik-qw" type="number" step="0.01" value="1.0"></label>
+<label><span>X</span><input id="ik-qx" type="number" step="0.01" value="0.0"></label>
+<label><span>Y</span><input id="ik-qy" type="number" step="0.01" value="0.0"></label>
+<label><span>Z</span><input id="ik-qz" type="number" step="0.01" value="0.0"></label>
+</div>
+</div>
 <label class="field-label">Constrain joints<select id="ik-joints">
 <option value="auto">Auto (arm joints)</option>
 <option value="left">Left arm (left_1–7)</option>

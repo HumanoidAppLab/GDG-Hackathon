@@ -9,6 +9,7 @@ from typing import Any
 
 import numpy as np
 import torch
+from scipy.spatial.transform import Rotation
 
 from .config import SimulatorConfig
 
@@ -136,6 +137,42 @@ def _quat_multiply(q1_wxyz: np.ndarray, q2_wxyz: np.ndarray) -> np.ndarray:
             w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
         ],
         dtype=float,
+    )
+
+
+def _parse_orientation(
+    orientation: Iterable[float] | None,
+    *,
+    euler_degrees: bool = False,
+) -> np.ndarray | None:
+    """Convert an Euler angle sequence or quaternion into normalized WXYZ quaternion format.
+    :param orientation: 3-element Euler (roll, pitch, yaw) or 4-element quaternion (W, X, Y, Z).
+    :type orientation: Iterable[float] | None
+    :param euler_degrees: Interpret 3-element Euler angles as degrees when True, radians when False.
+    :type euler_degrees: bool
+    :return: Unit quaternion formatted as (W, X, Y, Z), or None if orientation is None.
+    :rtype: np.ndarray | None
+    """
+    # Return None immediately if no orientation target is requested.
+    if orientation is None:
+        return None
+    arr = np.asarray(tuple(orientation), dtype=float)
+    # Ensure the orientation sequence is one-dimensional.
+    if arr.ndim != 1:
+        raise ValueError(f"Orientation target must be a 1D sequence, got shape {arr.shape}")
+    # Process 4-element quaternion targets in WXYZ order.
+    if len(arr) == 4:
+        norm = float(np.linalg.norm(arr))
+        if norm <= 0.0:
+            raise ValueError("Orientation quaternion cannot have zero norm")
+        return arr / norm
+    # Process 3-element Euler targets (roll, pitch, yaw) using extrinsic XYZ convention.
+    if len(arr) == 3:
+        rot = Rotation.from_euler("xyz", arr, degrees=euler_degrees)
+        xyzw = rot.as_quat()
+        return np.array([xyzw[3], xyzw[0], xyzw[1], xyzw[2]], dtype=float)
+    raise ValueError(
+        f"Orientation target must contain 3 elements (Euler angles) or 4 elements (quaternion WXYZ), got {len(arr)}"
     )
 
 
@@ -851,20 +888,24 @@ class MH3Simulation:
     def solve_ik(
         self,
         end_effector: str,
-        position: Iterable[float],
-        quaternion_wxyz: Iterable[float] | None = None,
+        position: Iterable[float] | None = None,
+        orientation: Iterable[float] | None = None,
         *,
+        quaternion_wxyz: Iterable[float] | None = None,
         frame: str | None = None,
         joints: Iterable[str] | None = None,
         apply: bool = False,
+        euler_degrees: bool = False,
         **solver_options: Any,
     ) -> np.ndarray:
         """Solve IK for an end-effector pose expressed in world space or a link frame.
         :param end_effector: Public link name of the target end effector.
         :type end_effector: str
-        :param position: Target XYZ position in the specified reference frame.
-        :type position: Iterable[float]
-        :param quaternion_wxyz: Optional reference-frame WXYZ orientation target.
+        :param position: Target XYZ position in the specified frame, or None to keep the current position.
+        :type position: Iterable[float] | None
+        :param orientation: Optional orientation target as 3-element Euler or 4-element quaternion, or None.
+        :type orientation: Iterable[float] | None
+        :param quaternion_wxyz: Optional backward-compatible alias for 4-element quaternion (W, X, Y, Z).
         :type quaternion_wxyz: Iterable[float] | None
         :param frame: Reference link name for the target pose, or None for world space.
         :type frame: str | None
@@ -872,6 +913,8 @@ class MH3Simulation:
         :type joints: Iterable[str] | None
         :param apply: Command joint controllers to the solved targets when True.
         :type apply: bool
+        :param euler_degrees: Interpret 3-element Euler angles as degrees when True, radians when False.
+        :type euler_degrees: bool
         :param solver_options: Additional Genesis inverse-kinematics options.
         :type solver_options: Any
         :return: Full articulation position solution as a NumPy array.
@@ -879,16 +922,28 @@ class MH3Simulation:
         """
         # Ensure the simulation scene is constructed.
         self._require_built()
+        # Verify that at least one of target position or target orientation was supplied.
+        if position is None and orientation is None and quaternion_wxyz is None:
+            raise ValueError("At least one of position or orientation must be provided for IK solving")
         link = self.get_link(end_effector)
-        pos_target = np.asarray(tuple(position), dtype=float)
-        quat_target = None if quaternion_wxyz is None else np.asarray(tuple(quaternion_wxyz), dtype=float)
+        # Parse orientation input into a normalized WXYZ quaternion.
+        raw_orient = quaternion_wxyz if orientation is None else orientation
+        quat_target = _parse_orientation(raw_orient, euler_degrees=euler_degrees)
+        # Default to the end effector's current world position if no position target was specified.
+        if position is None:
+            pos_target = self._numpy(link.get_pos())
+        else:
+            pos_target = np.asarray(tuple(position), dtype=float)
+            if pos_target.shape != (3,):
+                raise ValueError(f"Position target must contain exactly 3 coordinates (X, Y, Z), got {len(pos_target)}")
         # Transform target pose from local reference link frame to world coordinates if specified.
         if frame is not None and frame != "world":
             ref_link = self.get_link(frame)
             ref_pos = self._numpy(ref_link.get_pos())
             ref_quat = self._numpy(ref_link.get_quat())
             # Rotate position offset into world orientation and translate by reference link position.
-            pos_target = ref_pos + _quat_rotate(ref_quat, pos_target)
+            if position is not None:
+                pos_target = ref_pos + _quat_rotate(ref_quat, pos_target)
             # Compose relative orientation with reference link world orientation if orientation is supplied.
             if quat_target is not None:
                 quat_target = _quat_multiply(ref_quat, quat_target)

@@ -220,6 +220,18 @@ select:focus
     gap: 6px;
     margin-top: 4px;
 }
+.coord-row.quat-row
+{
+    grid-template-columns: repeat(4, 1fr);
+}
+.ik-target-header
+{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    margin-bottom: 2px;
+}
 .coord-row label
 {
     display: flex;

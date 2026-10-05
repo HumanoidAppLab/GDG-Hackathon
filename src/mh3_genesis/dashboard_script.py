@@ -10,8 +10,10 @@ let feedsBusy = false;
 let ikBuilt = false;
 let ikSolving = false;
 let currentQuat = null;
+let currentEuler = null;
 let currentPos = null;
 let currentPosClean = true;
+let currentOrientClean = true;
 
 /**
  * Send a dashboard command to the local simulation server.
@@ -197,13 +199,41 @@ function buildIk(state)
     {
         document.querySelector(id)?.addEventListener('input', () => { currentPosClean = false; });
     }
+    for (const id of ['#ik-roll', '#ik-pitch', '#ik-yaw', '#ik-qw', '#ik-qx', '#ik-qy', '#ik-qz'])
+    {
+        document.querySelector(id)?.addEventListener('input', () => { currentOrientClean = false; });
+    }
+
+    const solvePosCheck = document.querySelector('#ik-solve-pos');
+    const posRow = document.querySelector('#ik-pos-row');
+    solvePosCheck?.addEventListener('change', () => {
+        if (posRow) posRow.style.opacity = solvePosCheck.checked ? '1.0' : '0.4';
+    });
+
+    const solveOrientCheck = document.querySelector('#ik-solve-orient');
+    const orientContainer = document.querySelector('#ik-orient-container');
+    const orientModeSelect = document.querySelector('#ik-orient-mode');
+    solveOrientCheck?.addEventListener('change', () => {
+        const active = solveOrientCheck.checked;
+        if (orientContainer) orientContainer.style.display = active ? 'block' : 'none';
+        if (orientModeSelect) orientModeSelect.style.display = active ? 'inline-block' : 'none';
+    });
+
+    orientModeSelect?.addEventListener('change', () => {
+        const mode = orientModeSelect.value;
+        const eulerRow = document.querySelector('#ik-euler-row');
+        const quatRow = document.querySelector('#ik-quat-row');
+        if (eulerRow) eulerRow.style.display = mode === 'euler' ? 'grid' : 'none';
+        if (quatRow) quatRow.style.display = mode === 'quat' ? 'grid' : 'none';
+    });
+
     ikBuilt = true;
     readCurrentPose();
 }
 
 /**
- * Query and fill current coordinates for the chosen end effector and reference frame.
- * @returns {Promise<void>} Coordinates are placed into X/Y/Z inputs.
+ * Query and fill current coordinates and orientation for the chosen end effector and reference frame.
+ * @returns {Promise<void>} Coordinates and orientation are placed into input fields.
  */
 async function readCurrentPose()
 {
@@ -221,15 +251,31 @@ async function readCurrentPose()
         if (!response.ok) throw new Error(await response.text());
         const data = await response.json();
         currentQuat = data.quaternion;
+        currentEuler = data.euler_deg;
         currentPos = data.position;
         currentPosClean = true;
+        currentOrientClean = true;
         document.querySelector('#ik-x').value = data.position[0].toFixed(4);
         document.querySelector('#ik-y').value = data.position[1].toFixed(4);
         document.querySelector('#ik-z').value = data.position[2].toFixed(4);
+        if (data.euler_deg)
+        {
+            document.querySelector('#ik-roll').value = data.euler_deg[0].toFixed(2);
+            document.querySelector('#ik-pitch').value = data.euler_deg[1].toFixed(2);
+            document.querySelector('#ik-yaw').value = data.euler_deg[2].toFixed(2);
+        }
+        if (data.quaternion)
+        {
+            document.querySelector('#ik-qw').value = data.quaternion[0].toFixed(4);
+            document.querySelector('#ik-qx').value = data.quaternion[1].toFixed(4);
+            document.querySelector('#ik-qy').value = data.quaternion[2].toFixed(4);
+            document.querySelector('#ik-qz').value = data.quaternion[3].toFixed(4);
+        }
         if (statusElem && !ikSolving)
         {
             const frameLabel = frame || 'world';
-            statusElem.textContent = `Pose for ${ee} in ${frameLabel}: (${data.position[0].toFixed(3)}, ${data.position[1].toFixed(3)}, ${data.position[2].toFixed(3)})`;
+            const eulerStr = data.euler_deg ? ` | rot: (${data.euler_deg[0].toFixed(1)}°, ${data.euler_deg[1].toFixed(1)}°, ${data.euler_deg[2].toFixed(1)}°)` : '';
+            statusElem.textContent = `Pose for ${ee} in ${frameLabel}: pos: (${data.position[0].toFixed(3)}, ${data.position[1].toFixed(3)}, ${data.position[2].toFixed(3)})${eulerStr}`;
         }
     }
     catch (error)
@@ -239,37 +285,98 @@ async function readCurrentPose()
 }
 
 /**
- * Submit target end effector, frame, coordinates, and joint constraints for IK solving.
+ * Submit target end effector, frame, coordinates, orientation, and joint constraints for IK solving.
  * @returns {Promise<void>} The request is submitted to the simulation server.
  */
 async function applyIk()
 {
     const ee = document.querySelector('#ik-ee').value;
     const frame = document.querySelector('#ik-frame').value || null;
-    const x = Number(document.querySelector('#ik-x').value);
-    const y = Number(document.querySelector('#ik-y').value);
-    const z = Number(document.querySelector('#ik-z').value);
     const jointsChoice = document.querySelector('#ik-joints').value;
     const statusElem = document.querySelector('#ik-status');
-    const lockOrient = document.querySelector('#ik-orient')?.checked;
-    const quat = lockOrient && currentQuat ? currentQuat : null;
-    const pos = (currentPosClean && currentPos) ? currentPos : [x, y, z];
 
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z))
+    const solvePos = document.querySelector('#ik-solve-pos')?.checked;
+    const solveOrient = document.querySelector('#ik-solve-orient')?.checked;
+
+    if (!solvePos && !solveOrient)
     {
-        if (statusElem) statusElem.textContent = 'Coordinates must be valid finite numbers.';
+        if (statusElem) statusElem.textContent = 'Please enable at least "Solve Position" or "Solve Orientation".';
         return;
     }
+
+    let pos = null;
+    if (solvePos)
+    {
+        const x = Number(document.querySelector('#ik-x').value);
+        const y = Number(document.querySelector('#ik-y').value);
+        const z = Number(document.querySelector('#ik-z').value);
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z))
+        {
+            if (statusElem) statusElem.textContent = 'Position coordinates must be valid finite numbers.';
+            return;
+        }
+        pos = (currentPosClean && currentPos) ? currentPos : [x, y, z];
+    }
+
+    let orient = null;
+    let eulerDegrees = false;
+    if (solveOrient)
+    {
+        const mode = document.querySelector('#ik-orient-mode')?.value || 'euler';
+        if (mode === 'euler')
+        {
+            const r = Number(document.querySelector('#ik-roll').value);
+            const p = Number(document.querySelector('#ik-pitch').value);
+            const y = Number(document.querySelector('#ik-yaw').value);
+            if (!Number.isFinite(r) || !Number.isFinite(p) || !Number.isFinite(y))
+            {
+                if (statusElem) statusElem.textContent = 'Orientation angles must be valid finite numbers.';
+                return;
+            }
+            orient = (currentOrientClean && currentEuler) ? currentEuler : [r, p, y];
+            eulerDegrees = true;
+        }
+        else
+        {
+            const qw = Number(document.querySelector('#ik-qw').value);
+            const qx = Number(document.querySelector('#ik-qx').value);
+            const qy = Number(document.querySelector('#ik-qy').value);
+            const qz = Number(document.querySelector('#ik-qz').value);
+            if (!Number.isFinite(qw) || !Number.isFinite(qx) || !Number.isFinite(qy) || !Number.isFinite(qz))
+            {
+                if (statusElem) statusElem.textContent = 'Quaternion coordinates must be valid finite numbers.';
+                return;
+            }
+            orient = (currentOrientClean && currentQuat) ? currentQuat : [qw, qx, qy, qz];
+            eulerDegrees = false;
+        }
+    }
+
     ikSolving = true;
-    if (statusElem) statusElem.textContent = `Solving IK for ${ee}…`;
+    if (statusElem)
+    {
+        if (pos === null)
+        {
+            statusElem.textContent = `Solving orientation for ${ee} (keeping current position)…`;
+        }
+        else if (orient === null)
+        {
+            statusElem.textContent = `Solving position for ${ee}…`;
+        }
+        else
+        {
+            statusElem.textContent = `Solving pose for ${ee}…`;
+        }
+    }
     try
     {
         const response = await post('/api/ik', {
             end_effector: ee,
             position: pos,
-            quaternion: quat,
+            orientation: orient,
             frame: frame,
             joints: jointsChoice,
+            euler_degrees: eulerDegrees,
         });
         if (!response.ok)
         {

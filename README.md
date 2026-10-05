@@ -2,9 +2,9 @@
 
 This repository is a self-contained, Python-based starting point for building projects with the [Mirsee Robotics](https://mirsee.com "Mirsee Robotics Inc.") MH3 in [Genesis World](https://genesis-embodied-ai.github.io "Genesis World"). It includes the simulated MH3, a default world with a floor, a browser dashboard, and a Python API for controlling and observing the robot.
 
-## Setup and run
+## Setup and Run
 
-### Supported platforms
+### Supported Platforms
 
 - **Linux x64** (glibc 2.28+)
 - **Apple Silicon macOS** (macOS 14+)
@@ -17,7 +17,7 @@ This repository is a self-contained, Python-based starting point for building pr
 - **Linux:** `curl` or `wget`, plus graphics runtime libraries (`libgl1`, `libegl1`, `libglib2.0-0` on Ubuntu/Debian). On WSL2, ensure WSLg and updated GPU drivers are installed.
 - Working GPU drivers and OpenGL/EGL runtime (required for cameras and the viewer, even if physics runs on CPU). See [Genesis installation requirements](https://genesis-world.readthedocs.io/en/latest/user_guide/overview/installation.html "Genesis World - Installation").
 
-### Installation & Running
+### Installation
 
 > [!NOTE]
 > Initial setup may take a few minutes while kernels compile and the environment is verified.  
@@ -25,13 +25,11 @@ This repository is a self-contained, Python-based starting point for building pr
 **Linux / Apple Silicon macOS:**
 ```bash
 ./setup.sh
-./run.sh
 ```
 
 **Windows x64 (PowerShell):**
 ```powershell
 .\setup.ps1
-.\run.ps1
 ```
 
 > [!IMPORTANT]
@@ -39,8 +37,14 @@ This repository is a self-contained, Python-based starting point for building pr
 
 **Common options:**
 - Force CPU physics: `./setup.sh --cpu` (or `.\setup.ps1 --cpu`)
-- Run options: `./run.sh [--headless] [--no-controls] [--backend cpu]`
 - Reset environment: `./setup.sh --reset` (or `.\setup.ps1 --reset`)
+
+### Running Scripts
+
+After setup, run simulation scripts (such as [`hello_mh3.py`](hello_mh3.py "hello_mh3.py")) with `uv run`:
+```bash
+uv run hello_mh3.py
+```
 
 ## Upgrading
 
@@ -61,46 +65,45 @@ To update dependencies to the latest [Genesis World](https://genesis-embodied-ai
 
 Use `--dry-run` to preview changes or `--lock-only` to update lockfiles without installing.
 
-## Browser dashboard
+## Browser Dashboard
 
-The dashboard starts automatically in your default browser when you launch the simulator with `./run.sh` or `.\run.ps1`.
+The dashboard provides an interactive web interface for driving the base, posing joints, testing inverse kinematics (IK), and monitoring live camera feeds.
 
-### Controls & feeds
+### Controls & Feeds
+
 - **Base drive:** Hold on-screen buttons or use **W / A / S / D** (or arrow keys) to drive the base. Speed sliders adjust maximum linear and angular rates. Releasing a control stops base motion automatically.
 - **Joint controls:** Adjust sliders or enter numeric values to pose joints. Click **Return all joints home** to restore the default startup configuration.
+- **IK tester:** Interactively solve inverse kinematics for chosen end effectors and reference frames with position and orientation targets.
 - **Camera feeds:** Displays live views for head and base cameras (left RGB, right RGB, and depth). In depth views, close surfaces are bright and distances beyond 5 m are dark.
 
-### Enabling, disabling & embedding
-- **Disable dashboard:** Pass `--no-controls` to your run script:
-  ```bash
-  ./run.sh --no-controls        # Linux / macOS
-  .\run.ps1 --no-controls       # Windows
-  ```
-- **Stopping:** Closing the browser tab only closes the page; press `Ctrl+C` in your terminal to stop the simulator.
-- **Embedding in custom scripts:**
-  ```python
-  from mh3_genesis import MH3ControlPanel, MH3Simulation, SimulatorConfig
+### Using the Dashboard
+You can easily embed the dashboard in your custom simulation scripts:
 
-  sim = MH3Simulation(SimulatorConfig.from_yaml("config/mh3.yaml")).build()
-  panel = MH3ControlPanel(sim)
-  panel.start()  # Use open_browser=False to print the local URL without opening a browser tab
-  sim.add_step_hook(panel.update)
+```python
+from mh3_genesis import MH3ControlPanel, MH3Simulation, SimulatorConfig
 
-  try:
-      sim.run()
-  finally:
-      panel.close()
-  ```
-  The dashboard listens locally on `127.0.0.1` on an automatically assigned port. Commands are queued and applied safely on the simulation thread during `panel.update()`.
+sim = MH3Simulation(SimulatorConfig.from_yaml("config/mh3.yaml")).build()
+panel = MH3ControlPanel(sim)
+panel.start()  # Use open_browser=False to print the local URL without opening a browser tab
+sim.add_step_hook(panel.update)
 
-## Robot joints & links
+try:
+    sim.run()
+finally:
+    panel.close()
+```
+The dashboard listens locally on `127.0.0.1` on an automatically assigned port. Commands are queued and applied safely on the simulation thread during `panel.update()`. Press `Ctrl+C` in your terminal to stop the simulation.
+
+## Robot Joints & Links
 
 ### Units
+
 - **Revolute joints (arms, head, hands):** Radians (`rad`).
 - **Prismatic joints (`slider`):** Metres (`m`).
 - **Mobile base velocities:** Metres per second (`m/s`) for linear speed, radians per second (`rad/s`) for angular speed.
 
-### Joint names & limits
+### Joint Names & Limits
+
 Inspect available joints and limits via `sim.joint_names` and `sim.get_joint_limits()`:
 
 - **Torso lift:** `slider` (travels from 0.0 to 0.3 m).
@@ -110,7 +113,8 @@ Inspect available joints and limits via `sim.joint_names` and `sim.get_joint_lim
   - **Fingers:** `left_index`, `left_middle`, `left_ring`, `left_little` (and matching `right_*` joints). Zero radians represents fully open; joints close through 1.57 rad. Dependent finger joints follow these root controls automatically via mimic constraints.
   - **Thumbs:** `left_thumb_1` (up to 1.6 rad) and `left_thumb_2` (up to 0.45 rad), along with their `right_*` counterparts.
 
-### Link names
+### Link Names
+
 Discover all link identifiers using `sim.link_names` before passing one to `sim.get_link()` or `sim.solve_ik()`:
 - **Arm segments:** `left_arm_1` through `left_arm_7` (and `right_arm_1` through `right_arm_7`).
 - **Gripper bases:** `left_gripper_base`, `right_gripper_base`.
@@ -119,7 +123,7 @@ Discover all link identifiers using `sim.link_names` before passing one to `sim.
 
 ## Using the API
 
-### Running custom scripts
+### Running Custom Scripts
 
 After running setup, execute your custom scripts with `uv run`:
 
@@ -127,7 +131,7 @@ After running setup, execute your custom scripts with `uv run`:
 uv run my_script.py
 ```
 
-### API usage example (`hello_mh3.py`)
+### API Usage Example - `hello_mh3.py`
 
 A complete, self-contained starter script demonstrating scene hooks, joint commands, base driving, state queries, inverse kinematics, camera capture, and step hooks is provided in [`hello_mh3.py`](hello_mh3.py).
 
