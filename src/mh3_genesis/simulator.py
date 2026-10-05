@@ -717,7 +717,7 @@ class MH3Simulation:
         :type quaternion_wxyz: Iterable[float] | None
         :param joints: Optional public joint names to vary during solving.
         :type joints: Iterable[str] | None
-        :param apply: Apply the returned articulation pose when True.
+        :param apply: Command joint controllers to the solved targets when True.
         :type apply: bool
         :param solver_options: Additional Genesis inverse-kinematics options.
         :type solver_options: Any
@@ -743,10 +743,12 @@ class MH3Simulation:
             dofs_idx_local=dofs,
             **solver_options,
         )
-        # Apply the solved configuration immediately to the articulation if requested.
+        # Apply the solved configuration through joint position controllers so the robot moves physically.
         if apply:
-            self.robot.set_qpos(solution)
-            self._sync_finger_mimics(immediate=True)
+            solution_arr = self._numpy(solution)
+            target_joints = tuple(joints) if joints is not None else self.joint_names
+            targets = {name: float(solution_arr[self._public_joint_indices[name]]) for name in target_joints}
+            self.set_joint_positions(targets)
         return self._numpy(solution)
 
     def capture_camera(

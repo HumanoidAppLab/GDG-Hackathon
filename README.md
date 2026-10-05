@@ -121,89 +121,83 @@ Discover all link identifiers using `sim.link_names` before passing one to `sim.
 
 ### Running custom scripts
 
-After running setup, execute your custom scripts with `uv run` so all project dependencies and environment configurations are used:
+After running setup, execute your custom scripts with `uv run`:
 
 ```bash
-uv run python my_script.py
+uv run my_script.py
 ```
 
-### API usage example
+### API usage example (`hello_mh3.py`)
 
-Import `MH3Simulation` in your own script and use the simulator directly:
+A complete, self-contained starter script demonstrating scene hooks, joint commands, base driving, state queries, inverse kinematics, camera capture, and step hooks is provided in [`hello_mh3.py`](hello_mh3.py).
+
+Run it directly with:
+```bash
+uv run hello_mh3.py
+```
+
+Or use it as a reference for your own scripts:
 
 ```python
+import numpy as np
 from mh3_genesis import MH3Simulation, SimulatorConfig
 
+# 1. Load configuration and initialize simulation.
 config = SimulatorConfig.from_yaml("config/mh3.yaml")
-sim = MH3Simulation(config).build()
+sim = MH3Simulation(config)
 
-# Discover the participant-controllable joints and available cameras.
+# 2. Scene hook: add custom entities before Genesis compiles the scene.
+def add_custom_world(simulation: MH3Simulation) -> None:
+    simulation.scene.add_entity(
+        simulation.gs.morphs.Box(pos=(1.0, 0.0, 0.25), size=(0.3, 0.3, 0.5))
+    )
+
+sim.add_scene_hook(add_custom_world)
+
+# 3. Build simulation, compile kernels, and spawn articulation.
+sim.build()
+
+# Inspect available joints, links, and cameras.
 print(sim.compute_backend)
 print(sim.joint_names)
 print(sim.link_names)
 print(sim.camera_names)
 
-# Joint position, velocity, and effort commands are dictionaries keyed by joint name.
-sim.set_joint_positions({"head_yaw": 0.4, "head_pitch": -0.2})
-sim.set_joint_efforts({"left_1": 1.0})
+# 4. Control robot joints and drive mobile base.
+sim.set_joint_positions({"head_yaw": 0.2, "head_pitch": -0.2, "slider": 0.1})
+sim.set_joint_positions({"left_index": 0.6, "left_thumb_1": 0.5})
+sim.drive_base(linear_mps=0.1, angular_radps=0.0)
 
-# Drive the base in metres per second and radians per second.
-sim.drive_base(linear_mps=0.25, angular_radps=0.0)
+# Advance simulation steps.
+for _ in range(30):
+    sim.step()
 sim.stop_base()
 
-# State and sensor data are returned as NumPy arrays, with no middleware.
-state = sim.get_joint_state(["head_yaw", "head_pitch"])
-frame = sim.capture_camera("head_left", rgb=True, depth=True)
-print(state.positions, frame.rgb.shape, frame.depth.shape)
-points, valid_depth = sim.capture_pointcloud("head_left")
+# 5. Read joint states (positions, velocities, efforts).
+joint_state = sim.get_joint_state(["head_yaw", "head_pitch", "slider"])
 
-# Genesis' native IK solver can be restricted to one arm.
-left_arm = [f"left_{index}" for index in range(1, 8)]
-qpos = sim.solve_ik(
-    "left_gripper_base",
-    position=(0.55, 0.30, 0.90),
-    joints=left_arm,
+# 6. Inverse Kinematics (IK) for arm manipulation.
+left_arm_joints = [f"left_{i}" for i in range(1, 8)]
+solution = sim.solve_ik(
+    end_effector="left_gripper_base",
+    position=(0.45, 0.25, 0.85),
+    joints=left_arm_joints,
     apply=True,
 )
 
+# 7. Sensor capture (RGB, depth, point cloud).
+frame = sim.capture_camera("head_left", rgb=True, depth=True)
+points, valid_depth = sim.capture_pointcloud("head_left")
+
+# 8. Step hook: register callbacks to run after each physics step.
+def behavior_controller(simulation: MH3Simulation) -> None:
+    if simulation.sim_time > 1.0:
+        simulation.set_joint_positions({"head_pitch": 0.0})
+
+sim.add_step_hook(behavior_controller)
+
+# Run indefinitely (or pass steps=... to run for a specific duration).
 sim.run()
 ```
 
-`drive_base()` and `stop_base()` allow you to drive the robot. `solve_ik` accepts an optional world-frame `quaternion_wxyz`, plus any [Genesis IK](https://genesis-world.readthedocs.io/en/latest/user_guide/robot_control/inverse_kinematics_motion_planning.html "Genesis World - Inverse Kinematics") keyword such as `pos_tol`, `rot_tol`, or `max_solver_iters`. By default it only returns a solution; `apply=True` teleports the articulation to it.
-
-For event-style projects, register any number of per-step callbacks:
-
-```python
-def controller(sim: MH3Simulation) -> None:
-    """Return the head to center after one simulated second.
-    :param sim: Simulation invoking this step hook.
-    :type sim: MH3Simulation
-    :return: None after submitting a head target when applicable.
-    :rtype: None
-    """
-    if sim.sim_time > 1.0:
-        sim.set_joint_positions({"head_yaw": 0.0})
-
-sim.add_step_hook(controller)
-sim.run()
-```
-
-Scene hooks add world geometry before [Genesis World](https://genesis-embodied-ai.github.io "Genesis World") compiles the scene:
-
-```python
-sim = MH3Simulation(config)
-
-def add_world(sim: MH3Simulation) -> None:
-    """Add a box to the scene before Genesis builds it.
-    :param sim: Simulation providing the unbuilt Genesis scene.
-    :type sim: MH3Simulation
-    :return: None after adding the box.
-    :rtype: None
-    """
-    sim.scene.add_entity(sim.gs.morphs.Box(pos=(1.0, 0.0, 0.25), size=(0.5, 0.5, 0.5)))
-
-sim.add_scene_hook(add_world)
-sim.build().run()
-```
-
-Advanced projects can also use `sim.scene`, `sim.robot`, `sim.floor`, and `sim.gs` for any other native [Genesis World](https://genesis-embodied-ai.github.io "Genesis World") feature.
+Advanced projects can also directly access `sim.scene`, `sim.robot`, `sim.floor`, and `sim.gs` for any native [Genesis World](https://genesis-embodied-ai.github.io "Genesis World") feature.
