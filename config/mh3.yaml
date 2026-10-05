@@ -9,6 +9,46 @@ spawn_position: [0.0, 0.0, 0.0]
 spawn_euler_deg: [0.0, 0.0, 0.0]
 position_kp: 350.0
 position_kv: 35.0
+enable_gravity_compensation: true
+
+# Joint-specific gains reflect the physical actuator power distribution.
+# Shoulder and elbow pitch actuators carry substantial cantilever loads and receive higher stiffness.
+joint_kp:
+  left_1: 800.0
+  left_2: 800.0
+  left_3: 500.0
+  left_4: 800.0
+  left_5: 500.0
+  left_6: 300.0
+  left_7: 300.0
+  right_1: 800.0
+  right_2: 800.0
+  right_3: 500.0
+  right_4: 800.0
+  right_5: 500.0
+  right_6: 300.0
+  right_7: 300.0
+  head_yaw: 200.0
+  head_pitch: 200.0
+
+joint_kv:
+  left_1: 80.0
+  left_2: 80.0
+  left_3: 50.0
+  left_4: 80.0
+  left_5: 50.0
+  left_6: 30.0
+  left_7: 30.0
+  right_1: 80.0
+  right_2: 80.0
+  right_3: 50.0
+  right_4: 80.0
+  right_5: 50.0
+  right_6: 30.0
+  right_7: 30.0
+  head_yaw: 20.0
+  head_pitch: 20.0
+
 slider_position_kp: 350000.0
 slider_position_kv: 4000.0
 slider_max_velocity_mps: 0.008

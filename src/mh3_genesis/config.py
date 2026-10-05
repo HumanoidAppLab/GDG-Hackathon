@@ -95,6 +95,12 @@ class SimulatorConfig:
     :type max_angular_velocity_radps: float
     :param drive_command_timeout_s: Dashboard base-drive deadman timeout in seconds.
     :type drive_command_timeout_s: float
+    :param enable_gravity_compensation: Enable analytic feedforward gravity compensation.
+    :type enable_gravity_compensation: bool
+    :param joint_kp: Joint-specific position proportional gains keyed by public joint name.
+    :type joint_kp: dict[str, float]
+    :param joint_kv: Joint-specific position damping gains keyed by public joint name.
+    :type joint_kv: dict[str, float]
     :param initial_positions: Startup positions keyed by public joint name.
     :type initial_positions: dict[str, float]
     :param cameras: Mounted camera configurations.
@@ -113,6 +119,9 @@ class SimulatorConfig:
     spawn_euler_deg: tuple[float, float, float] = (0.0, 0.0, 0.0)
     position_kp: float = 350.0
     position_kv: float = 35.0
+    enable_gravity_compensation: bool = True
+    joint_kp: dict[str, float] = field(default_factory=dict)
+    joint_kv: dict[str, float] = field(default_factory=dict)
     slider_position_kp: float = 350000.0
     slider_position_kv: float = 4000.0
     slider_max_velocity_mps: float = 0.008
@@ -179,6 +188,13 @@ class SimulatorConfig:
         # Verify that standard joint position gains are non-negative and proportional gain is positive.
         if self.position_kp <= 0.0 or self.position_kv < 0.0:
             raise ValueError("joint position gains must be non-negative with positive kp")
+        # Ensure configured joint-specific proportional and damping gains are non-negative.
+        for name, kp in self.joint_kp.items():
+            if kp <= 0.0:
+                raise ValueError(f"joint_kp for {name!r} must be strictly positive")
+        for name, kv in self.joint_kv.items():
+            if kv < 0.0:
+                raise ValueError(f"joint_kv for {name!r} must be non-negative")
         # Verify that torso slider position gains are non-negative and proportional gain is positive.
         if self.slider_position_kp <= 0.0 or self.slider_position_kv < 0.0:
             raise ValueError("slider position gains must be non-negative with positive kp")

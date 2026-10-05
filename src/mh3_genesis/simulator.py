@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+import torch
 
 from .config import SimulatorConfig
 
@@ -214,6 +215,10 @@ class MH3Simulation:
         self._slider_reference: float | None = None
         self._slider_limits: tuple[float, float] | None = None
         self._home_positions: dict[str, float] = {}
+        self._cached_link_masses: Any = None
+        self._cached_link_coms: Any = None
+        self._gravity_links: list[Any] = []
+        self._gravity_dof_indices: list[int] = []
         self.compute_backend: str | None = None
 
     @staticmethod
@@ -295,6 +300,8 @@ class MH3Simulation:
         self._configure_actuators()
         # Attach offscreen cameras to their specified mounting links on the robot.
         self._attach_cameras()
+        # Cache static link masses, local centers of mass, and target joints for gravity compensation.
+        self._configure_gravity_compensation()
         return self
 
     def _require_built(self) -> None:
@@ -399,10 +406,20 @@ class MH3Simulation:
         :rtype: None
         """
         indices = tuple(self._joint_indices.values())
-        # Assign uniform proportional and derivative gains to all standard articulation DOFs.
+        # Assign baseline proportional and derivative gains to all standard articulation DOFs.
         if indices:
             self.robot.set_dofs_kp(np.full(len(indices), self.config.position_kp), indices)
             self.robot.set_dofs_kv(np.full(len(indices), self.config.position_kv), indices)
+        # Apply joint-specific proportional gain overrides where configured.
+        for public_name, kp in self.config.joint_kp.items():
+            if public_name in self._public_joint_indices:
+                dof_idx = self._public_joint_indices[public_name]
+                self.robot.set_dofs_kp([float(kp)], [dof_idx])
+        # Apply joint-specific damping gain overrides where configured.
+        for public_name, kv in self.config.joint_kv.items():
+            if public_name in self._public_joint_indices:
+                dof_idx = self._public_joint_indices[public_name]
+                self.robot.set_dofs_kv([float(kv)], [dof_idx])
         # Configure specialized high-gain, force-limited controller parameters for the torso slider.
         slider_index = self._joint_indices.get("slider_joint")
         if slider_index is not None:
@@ -443,6 +460,30 @@ class MH3Simulation:
                     f"Camera {camera_config.name!r} parent link {camera_config.parent_link!r} was not found"
                 ) from error
             self._cameras[camera_config.name].attach(parent, np.asarray(camera_config.transform))
+
+    def _configure_gravity_compensation(self) -> None:
+        """Cache static link properties and active DOFs for gravity compensation.
+        :return: None after caching mass and COM buffers.
+        :rtype: None
+        """
+        # Ensure the simulation scene is constructed.
+        self._require_built()
+        # Read and cache static link masses and local center-of-mass vectors.
+        self._cached_link_masses = self.robot.get_links_mass()
+        self._cached_link_coms = self.robot.get_links_COM()
+        # Filter for links that have meaningful mass and belong to the articulated upper body.
+        # Links associated with the mobile base and drive wheels are excluded.
+        self._gravity_links = [
+            link
+            for link in self.robot.links
+            if float(self._cached_link_masses[link.idx_local]) >= 0.02
+            and not any(k in link.name for k in ("wheel", "castor", "base_link", "ground", "charging_pad", "slider"))
+        ]
+        # Identify DOF indices for all controllable upper body joints (arms and head).
+        arm_and_head_joints = [
+            name for name in self._public_joint_indices if name.startswith(("left_", "right_", "head_"))
+        ]
+        self._gravity_dof_indices = [self._public_joint_indices[name] for name in arm_and_head_joints]
 
     def _selection(self, values: Mapping[str, float]) -> tuple[list[float], list[int]]:
         """Resolve public joint targets to articulation DOF indices.
@@ -959,6 +1000,48 @@ class MH3Simulation:
             raise RuntimeError("Scene hooks must be registered before build()")
         self._scene_hooks.append(hook)
 
+    def compute_gravity_torques(self) -> np.ndarray:
+        """Compute instantaneous joint torques required to compensate gravity.
+        :return: Array of gravity compensation torques for all articulation DOFs in Nm.
+        :rtype: np.ndarray
+        """
+        # Ensure the simulation scene is constructed.
+        self._require_built()
+        tau = self._compute_gravity_torques_tensor()
+        return self._numpy(tau)
+
+    def _compute_gravity_torques_tensor(self) -> torch.Tensor:
+        """Compute the full articulation gravity torque vector as a tensor.
+        :return: PyTorch tensor of gravity compensation torques.
+        :rtype: torch.Tensor
+        """
+        # Initialize zero torque vector across all articulation degrees of freedom.
+        tau_grav = torch.zeros(self.robot.n_dofs, device=self._cached_link_masses.device)
+        # Sum gravitational restoring torque from each significant moving link COM.
+        for link in self._gravity_links:
+            mass = self._cached_link_masses[link.idx_local]
+            com = self._cached_link_coms[link.idx_local]
+            jacobian = self.robot.get_jacobian(link, local_point=com)
+            # Row 2 corresponds to the vertical Z translation component.
+            tau_grav += mass * 9.81 * jacobian[2]
+        return tau_grav
+
+    def _apply_gravity_compensation(self) -> None:
+        """Apply analytic feedforward gravity compensation torques to joints.
+        :return: None after updating actuator bias terms.
+        :rtype: None
+        """
+        # Return if no upper body joints require gravity compensation.
+        if not self._gravity_dof_indices:
+            return
+        # Calculate instantaneous gravity restoring torques.
+        tau_g = self._compute_gravity_torques_tensor()
+        # Fetch current actuator bias vectors from the solver.
+        b0, b1, b2 = self.robot.get_dofs_act_bias()
+        # Feed forward the vertical gravity compensation torques directly to position actuators.
+        b0[self._gravity_dof_indices] = tau_g[self._gravity_dof_indices]
+        self.robot.set_dofs_act_bias(b0, b1, b2)
+
     def step(self) -> None:
         """Advance joint controls and physics by one simulation time step.
         :return: None after updating physics and calling step hooks.
@@ -970,6 +1053,9 @@ class MH3Simulation:
         self._advance_slider_reference()
         # Synchronize dependent finger segments with their root joints.
         self._sync_finger_mimics()
+        # Apply feedforward gravity compensation to controllable articulated joints if enabled.
+        if self.config.enable_gravity_compensation:
+            self._apply_gravity_compensation()
         # Advance the physical simulation by one time step.
         self.scene.step()
         # Increment internal simulation clock by the time step duration.
