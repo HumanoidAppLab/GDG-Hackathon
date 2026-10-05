@@ -20,6 +20,7 @@ import numpy as np
 from PIL import Image
 from scipy.spatial.transform import Rotation
 
+from .config import CameraConfig
 from .dashboard_script import SCRIPT
 from .dashboard_style import STYLE
 from .simulator import MH3Simulation
@@ -87,15 +88,39 @@ class MH3ControlPanel:
         self._last_snapshot_at = 0.0
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
-        # Discover stereo camera pairs available on the robot articulation.
-        self._camera_pairs = {
-            source: (f"{source}_left", f"{source}_right")
-            for source in ("head", "base")
-            if {f"{source}_left", f"{source}_right"}.issubset(simulation.camera_names)
+        # Index enabled and available camera configurations from simulation.
+        self._active_cameras: dict[str, CameraConfig] = {
+            camera.name: camera
+            for camera in simulation.config.cameras
+            if camera.enabled and camera.name in simulation.camera_names
         }
+        # Discover stereo camera sources with at least one active camera.
+        self._camera_sources: list[str] = [
+            source for source in ("head", "base") if any(cam.startswith(f"{source}_") for cam in self._active_cameras)
+        ]
+        # Map source-qualified dashboard feed names to their originating cameras and channels.
+        feed_map: dict[str, tuple[str, str]] = {}
+        for source in ("head", "base"):
+            left_cam = f"{source}_left"
+            right_cam = f"{source}_right"
+            if left_cam in self._active_cameras:
+                feed_map[f"{source}-left-rgb"] = ("rgb", left_cam)
+                if self._active_cameras[left_cam].include_depth:
+                    feed_map[f"{source}-depth"] = ("depth", left_cam)
+            if right_cam in self._active_cameras:
+                feed_map[f"{source}-right-rgb"] = ("rgb", right_cam)
+                if f"{source}-depth" not in feed_map and self._active_cameras[right_cam].include_depth:
+                    feed_map[f"{source}-depth"] = ("depth", right_cam)
+        # Register any custom non-stereo cameras directly.
+        for cam_name, cam_cfg in self._active_cameras.items():
+            if not cam_name.startswith(("head_", "base_")):
+                feed_map[f"{cam_name}-rgb"] = ("rgb", cam_name)
+                if cam_cfg.include_depth:
+                    feed_map[f"{cam_name}-depth"] = ("depth", cam_name)
+        self._camera_feed_map = feed_map
         self._camera_frames: dict[str, bytes] = {}
         self._last_camera_request_at = 0.0
-        self._last_camera_render_at = 0.0
+        self._last_camera_render_times: dict[str, float] = {}
         self._camera_error: str | None = None
         # Exclude internal wheels and passive castors from public joint controls.
         self._joint_names = tuple(name for name in simulation.joint_names if name not in _BASE_INTERNAL_JOINTS)
@@ -195,7 +220,7 @@ class MH3ControlPanel:
                 elif self.path == "/api/camera-frames":
                     frames = panel.all_camera_frames()
                     self._send(json.dumps(frames), "application/json")
-                # Return individual binary JPEG frames for backward compatibility.
+                # Return individual binary frames for backward compatibility.
                 elif self.path.startswith("/api/camera/"):
                     name = self.path.removeprefix("/api/camera/")
                     # Reject unknown camera feed identifiers with an HTTP 404 response.
@@ -207,7 +232,8 @@ class MH3ControlPanel:
                     if frame is None:
                         self.send_error(HTTPStatus.SERVICE_UNAVAILABLE, "Camera frame is not ready")
                         return
-                    self._send(frame, "image/jpeg")
+                    content_type = "image/png" if frame.startswith(b"\x89PNG") else "image/jpeg"
+                    self._send(frame, content_type)
                 else:
                     self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -331,7 +357,8 @@ class MH3ControlPanel:
                 ],
                 "drive": {"linear": self._drive[0], "angular": self._drive[1]},
                 "sim_time": self.simulation.sim_time,
-                "camera_sources": list(self._camera_pairs),
+                "camera_sources": list(self._camera_sources),
+                "camera_feeds": list(self._camera_feed_map.keys()),
                 "camera_error": self._camera_error,
                 "ik_status": self._last_ik_status,
                 "end_effectors": [name for name in _RECOMMENDED_END_EFFECTORS if name in self.simulation.link_names],
@@ -342,10 +369,10 @@ class MH3ControlPanel:
     @property
     def _camera_feed_names(self) -> set[str]:
         """List available dashboard camera feed identifiers.
-        :return: Source-qualified RGB and depth feed names.
+        :return: Active RGB and depth feed names.
         :rtype: set[str]
         """
-        return {f"{source}-{feed}" for source in self._camera_pairs for feed in ("left-rgb", "right-rgb", "depth")}
+        return set(self._camera_feed_map.keys())
 
     def camera_frame(self, name: str) -> bytes | None:
         """Return a cached encoded camera frame and mark it requested.
@@ -364,41 +391,61 @@ class MH3ControlPanel:
 
     def all_camera_frames(self) -> dict[str, str]:
         """Return all cached camera frames as base64 data URLs.
-        :return: Mapping of feed names to base64 JPEG data URL strings.
+        :return: Mapping of feed names to base64 data URL strings.
         :rtype: dict[str, str]
         """
         # Record access timestamp and snapshot latest encoded frame bytes under lock.
         with self._lock:
             self._last_camera_request_at = time.monotonic()
             frames = dict(self._camera_frames)
-        # Encode raw JPEG bytes as base64 data URLs for batch JSON transport.
-        return {
-            name: f"data:image/jpeg;base64,{base64.b64encode(data).decode('ascii')}" for name, data in frames.items()
-        }
+        # Encode raw frame bytes as base64 data URLs with matching MIME types.
+        payload = {}
+        for name, data in frames.items():
+            mime = "image/png" if data.startswith(b"\x89PNG") else "image/jpeg"
+            payload[name] = f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
+        return payload
 
     @staticmethod
-    def _encode_rgb(rgb: np.ndarray) -> bytes:
-        """Encode an RGB image as a JPEG for the dashboard.
+    def _encode_rgb(rgb: np.ndarray, format_name: str = "jpeg", quality: int = 80) -> bytes:
+        """Encode an RGB image in the configured image format.
         :param rgb: RGB image array.
         :type rgb: np.ndarray
-        :return: JPEG image bytes.
+        :param format_name: Target image format ('jpeg' or 'png').
+        :type format_name: str
+        :param quality: Compression quality for JPEG encoding (1-100).
+        :type quality: int
+        :return: Encoded image bytes.
         :rtype: bytes
         """
-        # Convert RGB array to an 8-bit PIL Image and compress as JPEG.
         output = BytesIO()
-        Image.fromarray(np.asarray(rgb, dtype=np.uint8)).save(output, format="JPEG", quality=80)
+        image = Image.fromarray(np.asarray(rgb, dtype=np.uint8))
+        # Choose compression format based on camera configuration.
+        if format_name.lower() in ("jpeg", "jpg"):
+            image.save(output, format="JPEG", quality=int(np.clip(quality, 1, 100)))
+        else:
+            image.save(output, format="PNG")
         return output.getvalue()
 
     @staticmethod
-    def _encode_depth(depth: np.ndarray, near_m: float, far_m: float) -> bytes:
-        """Encode metric depth as a grayscale JPEG dashboard preview.
+    def _encode_depth(
+        depth: np.ndarray,
+        near_m: float,
+        far_m: float,
+        format_name: str = "jpeg",
+        quality: int = 85,
+    ) -> bytes:
+        """Encode metric depth as a grayscale preview in the configured image format.
         :param depth: Metric depth image array.
         :type depth: np.ndarray
         :param near_m: Camera near clipping distance in metres.
         :type near_m: float
         :param far_m: Camera far clipping distance in metres.
         :type far_m: float
-        :return: Grayscale JPEG image bytes.
+        :param format_name: Target image format ('jpeg' or 'png').
+        :type format_name: str
+        :param quality: Compression quality for JPEG encoding (1-100).
+        :type quality: int
+        :return: Encoded grayscale image bytes.
         :rtype: bytes
         """
         values = np.asarray(depth)
@@ -410,38 +457,56 @@ class MH3ControlPanel:
         grayscale[valid] = np.clip((display_far - values[valid]) / (display_far - near_m) * 255.0, 0.0, 255.0).astype(
             np.uint8
         )
-        # Encode grayscale array as a compressed JPEG image.
         output = BytesIO()
-        Image.fromarray(grayscale).save(output, format="JPEG", quality=85)
+        image = Image.fromarray(grayscale)
+        # Compress grayscale buffer into requested JPEG or PNG image format.
+        if format_name.lower() in ("jpeg", "jpg"):
+            image.save(output, format="JPEG", quality=int(np.clip(quality, 1, 100)))
+        else:
+            image.save(output, format="PNG")
         return output.getvalue()
 
-    def _render_camera_frames(self, simulation: MH3Simulation) -> None:
-        """Refresh encoded head and base feeds on the simulation thread.
+    def _render_cameras(self, simulation: MH3Simulation, camera_names: list[str]) -> None:
+        """Refresh encoded feeds for specified cameras on the simulation thread.
         :param simulation: Simulation that owns the Genesis cameras.
         :type simulation: MH3Simulation
-        :return: None after caching the available camera feeds.
+        :param camera_names: Names of active cameras due for rendering.
+        :type camera_names: list[str]
+        :return: None after updating the camera frames cache.
         :rtype: None
         """
-        frames = {}
-        # Iterate over stereo camera pairs and capture synchronized frames.
-        for source, (left_name, right_name) in self._camera_pairs.items():
-            left = simulation.capture_camera(left_name, rgb=True, depth=True)
-            right = simulation.capture_camera(right_name, rgb=True, depth=False)
-            # Ensure captured frames are valid.
-            if left.rgb is None or left.depth is None or right.rgb is None:
-                raise RuntimeError(f"Camera pair {source!r} did not return RGB and depth frames")
-            camera_config = next(camera for camera in simulation.config.cameras if camera.name == left_name)
-            # Compress captured RGB and metric depth buffers into web-deliverable image formats.
-            frames.update(
-                {
-                    f"{source}-left-rgb": self._encode_rgb(left.rgb),
-                    f"{source}-right-rgb": self._encode_rgb(right.rgb),
-                    f"{source}-depth": self._encode_depth(left.depth, camera_config.near_m, camera_config.far_m),
-                }
+        new_frames: dict[str, bytes] = {}
+        # Iterate over due cameras and capture frames matching their configuration.
+        for cam_name in camera_names:
+            cam_cfg = self._active_cameras[cam_name]
+            need_depth = cam_cfg.include_depth
+            capture = simulation.capture_camera(cam_name, rgb=True, depth=need_depth)
+            if capture.rgb is None or (need_depth and capture.depth is None):
+                raise RuntimeError(f"Camera {cam_name!r} capture returned incomplete buffers")
+            # Compress RGB buffer using camera-specific format and quality.
+            encoded_rgb = self._encode_rgb(capture.rgb, format_name=cam_cfg.rgb_format, quality=cam_cfg.rgb_quality)
+            # Compress depth buffer using camera-specific format and quality if enabled.
+            encoded_depth = (
+                self._encode_depth(
+                    capture.depth,
+                    cam_cfg.near_m,
+                    cam_cfg.far_m,
+                    format_name=cam_cfg.depth_format,
+                    quality=cam_cfg.depth_quality,
+                )
+                if need_depth and capture.depth is not None
+                else None
             )
-        # Store newly encoded frames and clear previous camera errors.
+            # Map encoded image buffers to their configured dashboard feed names.
+            for feed_name, (channel, feed_cam) in self._camera_feed_map.items():
+                if feed_cam == cam_name:
+                    if channel == "rgb":
+                        new_frames[feed_name] = encoded_rgb
+                    elif channel == "depth" and encoded_depth is not None:
+                        new_frames[feed_name] = encoded_depth
+        # Store newly encoded frames and clear previous camera errors under lock.
         with self._lock:
-            self._camera_frames = frames
+            self._camera_frames.update(new_frames)
             self._camera_error = None
 
     def queue_positions(self, targets: dict[str, Any]) -> None:
@@ -655,20 +720,27 @@ class MH3ControlPanel:
         # Check whether an active client has requested camera frames in the last two seconds.
         with self._lock:
             camera_requested = now - self._last_camera_request_at < 2.0
-        # Compute minimum render period from the configured dashboard framerate limit.
-        min_camera_interval = 1.0 / max(simulation.config.dashboard_camera_fps, 1.0)
-        # Render camera frames at the configured framerate if cameras are active and requested.
-        if self._camera_pairs and camera_requested and now - self._last_camera_render_at >= min_camera_interval:
-            try:
-                self._render_camera_frames(simulation)
-            except Exception as error:
-                with self._lock:
-                    changed = str(error) != self._camera_error
-                    self._camera_error = str(error)
-                if changed:
-                    logger.exception("MH3 dashboard camera rendering failed")
-            finally:
-                self._last_camera_render_at = time.monotonic()
+        # Render camera frames when requested and active cameras are configured.
+        if camera_requested and self._active_cameras:
+            # Determine which active cameras are due for a frame update based on individual framerates.
+            due_cameras = [
+                cam_name
+                for cam_name, cam_cfg in self._active_cameras.items()
+                if now - self._last_camera_render_times.get(cam_name, 0.0) >= (1.0 / max(cam_cfg.fps, 1.0))
+            ]
+            if due_cameras:
+                try:
+                    self._render_cameras(simulation, due_cameras)
+                except Exception as error:
+                    with self._lock:
+                        changed = str(error) != self._camera_error
+                        self._camera_error = str(error)
+                    if changed:
+                        logger.exception("MH3 dashboard camera rendering failed")
+                finally:
+                    render_now = time.monotonic()
+                    for cam_name in due_cameras:
+                        self._last_camera_render_times[cam_name] = render_now
 
 
 def _html(token: str, max_linear: float, max_angular: float) -> str:

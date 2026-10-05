@@ -95,6 +95,62 @@ finally:
 ```
 The dashboard listens locally on `127.0.0.1` on an automatically assigned port. Commands are queued and applied safely on the simulation thread during `panel.update()`. Press `Ctrl+C` in your terminal to stop the simulation.
 
+## Camera Configuration & Customization
+
+Cameras can be fully customized for performance, visual quality, and bandwidth in [`config/mh3.yaml`](config/mh3.yaml "config/mh3.yaml") or programmatically in Python. Each camera can be configured independently, allowing you to optimize rendering for your hardware or completely turn off cameras you do not need.
+
+### Available Camera Settings
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `name` | string | *(required)* | Public camera identifier (e.g. `head_left`, `head_right`, `base_left`, `base_right`). |
+| `parent_link` | string | *(required)* | Rigid link to mount the camera on (e.g. `head_camera_mount`, `mobile_base`). |
+| `enabled` | boolean | `true` | When `false`, the camera is completely excluded from the Genesis scene, freeing GPU memory and compute. |
+| `fps` | float | `20.0` | Maximum capture and streaming framerate in frames per second. |
+| `rgb_format` | string | `jpeg` | Image compression format: `jpeg` (fast and compact) or `png` (lossless). |
+| `rgb_quality` | integer | `80` | Compression quality for JPEG RGB encoding (`1` to `100`). |
+| `include_depth` | boolean | `true` | Capture and stream metric depth. Disabling depth on cameras that only need RGB avoids depth rendering overhead. |
+| `depth_format` | string | `jpeg` | Encoding format for depth map preview (`jpeg` or `png`). |
+| `depth_quality` | integer | `85` | Compression quality for JPEG depth encoding (`1` to `100`). |
+| `width` | integer | `640` | Render image width in pixels. |
+| `height` | integer | `360` | Render image height in pixels. |
+| `vertical_fov_deg` | float | `54.0` | Vertical field of view in degrees. |
+| `near_m` / `far_m` | float | `0.1` / `20.0` | Near and far clipping planes in metres. |
+
+> [!TIP]
+> Stereo pairs share the left camera's depth feed on the dashboard. By default, `include_depth` is enabled on `head_left` and `base_left`, but disabled on `head_right` and `base_right` to avoid duplicate depth rendering passes while still delivering full stereo RGB.
+
+### YAML Example (`config/mh3.yaml`)
+
+```yaml
+cameras:
+  - name: head_left
+    parent_link: head_camera_mount
+    enabled: true
+    fps: 30.0                # Stream head view at higher framerate
+    rgb_format: jpeg
+    rgb_quality: 85
+    include_depth: true      # Capture and stream depth preview
+    depth_format: jpeg
+    depth_quality: 85
+    width: 640
+    height: 360
+    vertical_fov_deg: 54.0
+    transform: ...
+
+  - name: base_left
+    parent_link: mobile_base
+    enabled: false           # Completely disable base cameras to save GPU resources
+    ...
+```
+
+### Dashboard Adaptation
+
+The browser dashboard automatically detects configured cameras and adapts in real time:
+- Inactive feeds and individual camera figures are hidden automatically.
+- If all cameras for a group (`head` or `base`) are disabled, that entire section is hidden.
+- If all cameras are disabled, the dashboard indicates `"All cameras disabled in configuration"` and suspends camera network polling.
+
 ## Robot Joints & Links
 
 ### Units

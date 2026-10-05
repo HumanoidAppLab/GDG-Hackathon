@@ -30,6 +30,20 @@ class CameraConfig:
     :type near_m: float
     :param far_m: Far clipping distance in metres.
     :type far_m: float
+    :param enabled: Whether this camera is active in simulation and preview.
+    :type enabled: bool
+    :param fps: Maximum rendering and streaming framerate in frames per second.
+    :type fps: float
+    :param rgb_format: Encoding format for RGB frames ('jpeg' or 'png').
+    :type rgb_format: str
+    :param rgb_quality: Compression quality for RGB JPEG encoding (1-100).
+    :type rgb_quality: int
+    :param depth_format: Encoding format for depth frames ('jpeg' or 'png').
+    :type depth_format: str
+    :param depth_quality: Compression quality for depth JPEG encoding (1-100).
+    :type depth_quality: int
+    :param include_depth: Whether to capture and stream depth frames for this camera.
+    :type include_depth: bool
     :return: Camera configuration.
     :rtype: CameraConfig
     """
@@ -42,6 +56,13 @@ class CameraConfig:
     vertical_fov_deg: float = 54.0
     near_m: float = 0.1
     far_m: float = 20.0
+    enabled: bool = True
+    fps: float = 20.0
+    rgb_format: str = "jpeg"
+    rgb_quality: int = 80
+    depth_format: str = "jpeg"
+    depth_quality: int = 85
+    include_depth: bool = True
 
     @property
     def resolution(self) -> tuple[int, int]:
@@ -160,6 +181,16 @@ class SimulatorConfig:
         for item in raw.pop("cameras", ()):
             item = dict(item)
             item["transform"] = tuple(tuple(float(value) for value in row) for row in item["transform"])
+            if "fps" in item:
+                item["fps"] = float(item["fps"])
+            if "rgb_quality" in item:
+                item["rgb_quality"] = int(item["rgb_quality"])
+            if "depth_quality" in item:
+                item["depth_quality"] = int(item["depth_quality"])
+            if "enabled" in item:
+                item["enabled"] = bool(item["enabled"])
+            if "include_depth" in item:
+                item["include_depth"] = bool(item["include_depth"])
             cameras.append(CameraConfig(**item))
         # Ensure 3D spatial vectors are converted to float tuples.
         for key in ("gravity", "spawn_position", "spawn_euler_deg"):
@@ -226,9 +257,24 @@ class SimulatorConfig:
         camera_names = [camera.name for camera in self.cameras]
         if len(camera_names) != len(set(camera_names)):
             raise ValueError("camera names must be unique")
-        # Validate matrix dimensions and output image dimensions for every camera.
+        # Validate matrix dimensions, image dimensions, framerate, and compression for every camera.
+        valid_formats = {"jpeg", "jpg", "png"}
         for camera in self.cameras:
             if len(camera.transform) != 4 or any(len(row) != 4 for row in camera.transform):
                 raise ValueError(f"camera {camera.name!r} transform must be 4x4")
             if camera.width <= 0 or camera.height <= 0:
                 raise ValueError(f"camera {camera.name!r} resolution must be positive")
+            if camera.fps <= 0.0:
+                raise ValueError(f"camera {camera.name!r} fps must be positive")
+            if camera.rgb_format.lower() not in valid_formats:
+                raise ValueError(
+                    f"camera {camera.name!r} rgb_format must be 'jpeg' or 'png', got {camera.rgb_format!r}"
+                )
+            if not (1 <= camera.rgb_quality <= 100):
+                raise ValueError(f"camera {camera.name!r} rgb_quality must be between 1 and 100")
+            if camera.depth_format.lower() not in valid_formats:
+                raise ValueError(
+                    f"camera {camera.name!r} depth_format must be 'jpeg' or 'png', got {camera.depth_format!r}"
+                )
+            if not (1 <= camera.depth_quality <= 100):
+                raise ValueError(f"camera {camera.name!r} depth_quality must be between 1 and 100")

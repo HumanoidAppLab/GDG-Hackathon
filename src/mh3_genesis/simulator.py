@@ -318,6 +318,8 @@ class MH3Simulation:
         self.robot = max(articulated, key=lambda entity: sum(joint.n_dofs for joint in entity.joints))
         # Add unattached camera sensors to the scene before scene compilation.
         for camera_config in self.config.cameras:
+            if not camera_config.enabled:
+                continue
             self._cameras[camera_config.name] = self.scene.add_camera(
                 res=camera_config.resolution,
                 fov=camera_config.vertical_fov_deg,
@@ -490,6 +492,8 @@ class MH3Simulation:
         """
         # Attach each configured camera sensor to its parent mounting link using its relative pose.
         for camera_config in self.config.cameras:
+            if not camera_config.enabled:
+                continue
             try:
                 parent = self.get_link(camera_config.parent_link)
             except KeyError as error:

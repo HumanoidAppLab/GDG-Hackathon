@@ -83,3 +83,43 @@ def test_config_validation_failures(tmp_path: Path) -> None:
     # Reject non-positive dashboard camera streaming framerate.
     with pytest.raises(ValueError, match="dashboard_camera_fps must be positive"):
         replace(base, dashboard_camera_fps=0.0).validate()
+
+    # Reject non-positive camera framerate.
+    bad_cam_fps = replace(base.cameras[0], fps=0.0)
+    with pytest.raises(ValueError, match="fps must be positive"):
+        replace(base, cameras=(bad_cam_fps,)).validate()
+
+    # Reject unsupported camera RGB image format.
+    bad_cam_format = replace(base.cameras[0], rgb_format="bmp")
+    with pytest.raises(ValueError, match="rgb_format must be 'jpeg' or 'png'"):
+        replace(base, cameras=(bad_cam_format,)).validate()
+
+    # Reject out-of-bounds camera JPEG compression quality.
+    bad_cam_quality = replace(base.cameras[0], rgb_quality=105)
+    with pytest.raises(ValueError, match="rgb_quality must be between 1 and 100"):
+        replace(base, cameras=(bad_cam_quality,)).validate()
+
+
+def test_camera_config_customization_and_disable() -> None:
+    """Verify camera configuration options for disabling, framerate, and format.
+    :return: None when customized camera parameters match configuration.
+    :rtype: None
+    """
+    cam = CameraConfig(
+        name="custom_cam",
+        parent_link="head_base",
+        transform=((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)),
+        width=1280,
+        height=720,
+        enabled=False,
+        fps=30.0,
+        rgb_format="png",
+        rgb_quality=95,
+        depth_format="png",
+        depth_quality=90,
+        include_depth=False,
+    )
+    assert cam.enabled is False
+    assert cam.fps == 30.0
+    assert cam.rgb_format == "png"
+    assert cam.include_depth is False

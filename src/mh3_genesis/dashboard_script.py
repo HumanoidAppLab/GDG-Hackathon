@@ -6,6 +6,7 @@ const cameraStatus = document.querySelector('#camera-status');
 let built = false;
 let drive = 'stop';
 let cameraSources = [];
+let cameraFeeds = [];
 let feedsBusy = false;
 let ikBuilt = false;
 let ikSolving = false;
@@ -410,12 +411,22 @@ async function poll()
             ikSolving = false;
         }
         document.querySelector('#status').textContent = `Connected · ${state.sim_time.toFixed(2)} s`;
-        cameraSources = state.camera_sources;
+        cameraSources = state.camera_sources || [];
+        cameraFeeds = state.camera_feeds || [];
         for (const source of ['head', 'base'])
         {
-            document.getElementById(source + '-cameras').hidden = !cameraSources.includes(source);
+            const container = document.getElementById(source + '-cameras');
+            if (container) container.hidden = !cameraSources.includes(source);
         }
-        cameraStatus.textContent = state.camera_error || (!cameraSources.length ? 'No stereo camera pairs configured' : 'Live camera feeds · near depth bright, beyond 5 m dark');
+        for (const feedName of ['head-left-rgb', 'head-right-rgb', 'head-depth', 'base-left-rgb', 'base-right-rgb', 'base-depth'])
+        {
+            const img = document.getElementById(feedName);
+            if (img && img.closest('figure'))
+            {
+                img.closest('figure').hidden = !cameraFeeds.includes(feedName);
+            }
+        }
+        cameraStatus.textContent = state.camera_error || (!cameraFeeds.length ? 'All cameras disabled in configuration' : 'Live camera feeds · near depth bright, beyond 5 m dark');
     }
     catch (error)
     {
@@ -430,7 +441,7 @@ async function poll()
  */
 async function refreshCameraFeeds()
 {
-    if (document.hidden || !cameraSources.length || feedsBusy) return;
+    if (document.hidden || !cameraFeeds.length || feedsBusy) return;
     feedsBusy = true;
     try
     {

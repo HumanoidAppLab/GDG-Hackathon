@@ -85,6 +85,13 @@ initial_positions:
 cameras:
   - name: base_left
     parent_link: mobile_base
+    enabled: true
+    fps: 20.0
+    rgb_format: jpeg
+    rgb_quality: 80
+    include_depth: true
+    depth_format: jpeg
+    depth_quality: 85
     width: 640
     height: 360
     vertical_fov_deg: 54.0
@@ -95,6 +102,13 @@ cameras:
       - [0.0, 0.0, 0.0, 1.0]
   - name: base_right
     parent_link: mobile_base
+    enabled: true
+    fps: 20.0
+    rgb_format: jpeg
+    rgb_quality: 80
+    include_depth: false
+    depth_format: jpeg
+    depth_quality: 85
     width: 640
     height: 360
     vertical_fov_deg: 54.0
@@ -105,6 +119,13 @@ cameras:
       - [0.0, 0.0, 0.0, 1.0]
   - name: head_left
     parent_link: head_camera_mount
+    enabled: true
+    fps: 20.0
+    rgb_format: jpeg
+    rgb_quality: 80
+    include_depth: true
+    depth_format: jpeg
+    depth_quality: 85
     width: 640
     height: 360
     vertical_fov_deg: 54.0
@@ -115,6 +136,13 @@ cameras:
       - [0.0, 0.0, 0.0, 1.0]
   - name: head_right
     parent_link: head_camera_mount
+    enabled: true
+    fps: 20.0
+    rgb_format: jpeg
+    rgb_quality: 80
+    include_depth: false
+    depth_format: jpeg
+    depth_quality: 85
     width: 640
     height: 360
     vertical_fov_deg: 54.0
