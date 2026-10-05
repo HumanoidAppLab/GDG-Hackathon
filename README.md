@@ -21,24 +21,23 @@ This repository is a self-contained, Python-based starting point for building pr
 
 **Linux / Apple Silicon macOS:**
 ```bash
-# Install
-bash setup.sh
-# Run
+./setup.sh
 ./run.sh
 ```
 
 **Windows x64 (PowerShell):**
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
+.\setup.ps1
 .\run.ps1
 ```
 
-> **Note:** Initial setup may take a few minutes while kernels compile and the environment is verified.
+> **Note:** Initial setup may take a few minutes while kernels compile and the environment is verified.  
+> *If Windows blocks script execution, run: `powershell -ExecutionPolicy Bypass -File .\setup.ps1`*
 
 **Common options:**
-- Force CPU physics: `bash setup.sh --cpu` (or `.\setup.ps1 --cpu`)
+- Force CPU physics: `./setup.sh --cpu` (or `.\setup.ps1 --cpu`)
 - Run options: `./run.sh [--headless] [--no-controls] [--backend cpu]`
-- Reset environment: `bash setup.sh --reset`
+- Reset environment: `./setup.sh --reset` (or `.\setup.ps1 --reset`)
 
 ## Upgrading
 
