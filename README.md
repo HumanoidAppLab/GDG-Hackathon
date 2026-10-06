@@ -97,51 +97,61 @@ The dashboard listens locally on `127.0.0.1` on an automatically assigned port. 
 
 ## Camera Configuration & Customization
 
-Cameras can be fully customized for performance, visual quality, and bandwidth in [`config/mh3.yaml`](config/mh3.yaml "config/mh3.yaml") or programmatically in Python. Each camera can be configured independently, allowing you to optimize rendering for your hardware or completely turn off cameras you do not need.
+Cameras and vision feeds can be customized for performance, visual quality, and bandwidth in [`config/mh3.yaml`](config/mh3.yaml "config/mh3.yaml") or programmatically in Python. Feeds are addressed directly by name:
+- **Head stereo rig:** `head_left` (RGB), `head_right` (RGB), `head_depth` (metric depth).
+- **Base stereo rig:** `base_left` (RGB), `base_right` (RGB), `base_depth` (metric depth).
 
-### Available Camera Settings
+### Configurable Camera Feed Settings
+
+Every camera feed shares the same clean configuration options:
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `name` | string | *(required)* | Public camera identifier (e.g. `head_left`, `head_right`, `base_left`, `base_right`). |
-| `parent_link` | string | *(required)* | Rigid link to mount the camera on (e.g. `head_camera_mount`, `mobile_base`). |
-| `enabled` | boolean | `true` | When `false`, the camera is completely excluded from the Genesis scene, freeing GPU memory and compute. |
-| `fps` | float | `20.0` | Maximum capture and streaming framerate in frames per second. |
-| `rgb_format` | string | `jpeg` | Image compression format: `jpeg` (fast and compact) or `png` (lossless). |
-| `rgb_quality` | integer | `80` | Compression quality for JPEG RGB encoding (`1` to `100`). |
-| `include_depth` | boolean | `true` | Capture and stream metric depth. Disabling depth on cameras that only need RGB avoids depth rendering overhead. |
-| `depth_format` | string | `jpeg` | Encoding format for depth map preview (`jpeg` or `png`). |
-| `depth_quality` | integer | `85` | Compression quality for JPEG depth encoding (`1` to `100`). |
-| `width` | integer | `640` | Render image width in pixels. |
-| `height` | integer | `360` | Render image height in pixels. |
-| `vertical_fov_deg` | float | `54.0` | Vertical field of view in degrees. |
+| `enabled` | boolean | `true` | When `false`, the feed is completely turned off. If both RGB and depth for a physical sensor are disabled, Genesis omits that camera entirely from the scene to save GPU resources. |
+| `format` | string | `jpeg` | Encoding format: `jpeg` (fast and compact) or `png` (lossless). |
+| `quality` | integer | `80` (85 for depth) | Compression quality for JPEG encoding (`1` to `100`). |
+| `width` | integer | `960` | Render image width in pixels. If changed, `height` is automatically updated to maintain the camera's native 16:10 aspect ratio. |
+| `height` | integer | `600` | Render image height in pixels. If changed, `width` is automatically updated to maintain the camera's native 16:10 aspect ratio. |
 | `near_m` / `far_m` | float | `0.1` / `20.0` | Near and far clipping planes in metres. |
 
-> [!TIP]
-> Stereo pairs share the left camera's depth feed on the dashboard. By default, `include_depth` is enabled on `head_left` and `base_left`, but disabled on `head_right` and `base_right` to avoid duplicate depth rendering passes while still delivering full stereo RGB.
+> [!NOTE]
+> Modifying either `width` or `height` automatically computes and updates the other dimension to preserve the native optical 16:10 aspect ratio ($1.6$) of the physical ZED X cameras (for instance, setting `width: 1920` automatically sets `height: 1200`, and setting `height: 400` sets `width: 640`).
+
+### Fixed Camera Hardware Parameters
+
+The following parameters represent the true physical characteristics of the robot's Stereolabs ZED X (base) and ZED X Mini (head) 2.2mm optics and real robot perception pipeline.
+
+| Parameter | Type | Value | Description |
+| :--- | :--- | :--- | :--- |
+| `vertical_fov_deg` | float | `77.95°` | Vertical field of view computed from the physical 2.2mm lens sensor aperture ($1.80\,\text{mm}$ aperture / $1.1124\,\text{mm}$ focal length). |
+| `horizontal_fov_deg` | float | `104.63°` | Horizontal field of view computed from the physical 2.2mm lens sensor aperture ($2.88\,\text{mm}$ aperture / $1.1124\,\text{mm}$ focal length; ~110° nominal with distortion). |
+| `fps` | float | `15.0 FPS` | Real robot sensor capture and ROS 2 perception publish rate (`pub_frame_rate: 15.0`). |
 
 ### YAML Example (`config/mh3.yaml`)
 
 ```yaml
+# Disable right RGB feeds to save GPU compute.
 cameras:
-  - name: head_left
-    parent_link: head_camera_mount
+  head_left:
     enabled: true
-    fps: 30.0                # Stream head view at higher framerate
-    rgb_format: jpeg
-    rgb_quality: 85
-    include_depth: true      # Capture and stream depth preview
-    depth_format: jpeg
-    depth_quality: 85
-    width: 640
-    height: 360
-    vertical_fov_deg: 54.0
-    transform: ...
-
-  - name: base_left
-    parent_link: mobile_base
-    enabled: false           # Completely disable base cameras to save GPU resources
-    ...
+    format: jpeg
+    quality: 80
+  head_right:
+    enabled: false
+  head_depth:
+    enabled: true
+    format: jpeg
+    quality: 85
+  base_left:
+    enabled: true
+    format: jpeg
+    quality: 80
+  base_right:
+    enabled: false
+  base_depth:
+    enabled: true
+    format: jpeg
+    quality: 85
 ```
 
 ### Dashboard Adaptation

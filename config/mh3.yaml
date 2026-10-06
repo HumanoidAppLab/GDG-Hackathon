@@ -58,7 +58,7 @@ wheel_radius_m: 0.1
 wheel_separation_m: 0.45
 max_linear_velocity_mps: 0.6
 max_angular_velocity_radps: 2.0
-dashboard_camera_fps: 20.0
+dashboard_camera_fps: 15.0
 drive_command_timeout_s: 0.3
 
 # The ready home pose holds both forearms forward, levels the end effectors, and points the head forward.
@@ -80,74 +80,30 @@ initial_positions:
   right_6: 0.0
   right_7: 0.0
 
-# These transforms come from camera prims authored in the bundled MH3 USD.
-# Genesis cameras look along local -Z with local +Y up, matching USD cameras.
+# Camera feeds configuration.
+# Available feeds: head_left, head_right, head_depth, base_left, base_right, base_depth.
+# Mounting links, transforms, optical FOV (77.95° V / 104.63° H), and framerate (15.0 FPS) are locked physical hardware specifications.
 cameras:
-  - name: base_left
-    parent_link: mobile_base
+  head_left:
     enabled: true
-    fps: 20.0
-    rgb_format: jpeg
-    rgb_quality: 80
-    include_depth: true
-    depth_format: jpeg
-    depth_quality: 85
-    width: 640
-    height: 360
-    vertical_fov_deg: 54.0
-    transform:
-      - [0.0, 0.0, -1.0, 0.302159]
-      - [-1.0, 0.0, 0.0, 0.060000]
-      - [0.0, 1.0, 0.0, 0.106314]
-      - [0.0, 0.0, 0.0, 1.0]
-  - name: base_right
-    parent_link: mobile_base
+    format: jpeg
+    quality: 80
+  head_right:
     enabled: true
-    fps: 20.0
-    rgb_format: jpeg
-    rgb_quality: 80
-    include_depth: false
-    depth_format: jpeg
-    depth_quality: 85
-    width: 640
-    height: 360
-    vertical_fov_deg: 54.0
-    transform:
-      - [0.0, 0.0, -1.0, 0.302159]
-      - [-1.0, 0.0, 0.0, -0.060000]
-      - [0.0, 1.0, 0.0, 0.106314]
-      - [0.0, 0.0, 0.0, 1.0]
-  - name: head_left
-    parent_link: head_camera_mount
+    format: jpeg
+    quality: 80
+  head_depth:
     enabled: true
-    fps: 20.0
-    rgb_format: jpeg
-    rgb_quality: 80
-    include_depth: true
-    depth_format: jpeg
-    depth_quality: 85
-    width: 640
-    height: 360
-    vertical_fov_deg: 54.0
-    transform:
-      - [0.0, 0.0, -1.0, 0.119917]
-      - [-0.00009623, 1.0, 0.0, 0.042416]
-      - [1.0, 0.00009623, 0.0, -0.024999]
-      - [0.0, 0.0, 0.0, 1.0]
-  - name: head_right
-    parent_link: head_camera_mount
+    format: jpeg
+    quality: 85
+  base_left:
     enabled: true
-    fps: 20.0
-    rgb_format: jpeg
-    rgb_quality: 80
-    include_depth: false
-    depth_format: jpeg
-    depth_quality: 85
-    width: 640
-    height: 360
-    vertical_fov_deg: 54.0
-    transform:
-      - [0.0, 0.0, -1.0, 0.119917]
-      - [-0.00009623, 1.0, 0.0, 0.042412]
-      - [1.0, 0.00009623, 0.0, 0.025001]
-      - [0.0, 0.0, 0.0, 1.0]
+    format: jpeg
+    quality: 80
+  base_right:
+    enabled: false
+  base_depth:
+    enabled: true
+    format: jpeg
+    quality: 85
+

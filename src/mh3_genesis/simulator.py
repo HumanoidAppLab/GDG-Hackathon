@@ -11,7 +11,7 @@ import numpy as np
 import torch
 from scipy.spatial.transform import Rotation
 
-from .config import SimulatorConfig
+from .config import DEFAULT_CAMERA_MOUNTS, CameraConfig, SimulatorConfig
 
 StepHook = Callable[["MH3Simulation"], None]
 SceneHook = Callable[["MH3Simulation"], None]
@@ -317,14 +317,25 @@ class MH3Simulation:
             raise RuntimeError(f"No articulation was found in {self.config.robot_usd}")
         self.robot = max(articulated, key=lambda entity: sum(joint.n_dofs for joint in entity.joints))
         # Add unattached camera sensors to the scene before scene compilation.
-        for camera_config in self.config.cameras:
-            if not camera_config.enabled:
+        # Add unattached physical camera sensors to the scene before scene compilation.
+        # Stereo depth feeds (head_depth, base_depth) share physical left camera optics (head_left, base_left).
+        phys_configs: dict[str, CameraConfig] = {}
+        for cam_cfg in self.config.cameras:
+            if not cam_cfg.enabled:
                 continue
-            self._cameras[camera_config.name] = self.scene.add_camera(
-                res=camera_config.resolution,
-                fov=camera_config.vertical_fov_deg,
-                near=camera_config.near_m,
-                far=camera_config.far_m,
+            phys_name = (
+                "head_left"
+                if cam_cfg.name == "head_depth"
+                else ("base_left" if cam_cfg.name == "base_depth" else cam_cfg.name)
+            )
+            if phys_name not in phys_configs:
+                phys_configs[phys_name] = cam_cfg
+        for phys_name, cam_cfg in phys_configs.items():
+            self._cameras[phys_name] = self.scene.add_camera(
+                res=cam_cfg.resolution,
+                fov=cam_cfg.vertical_fov_deg,
+                near=cam_cfg.near_m,
+                far=cam_cfg.far_m,
                 GUI=False,
             )
         # Execute registered pre-build scene hooks to add custom user entities.
@@ -486,21 +497,26 @@ class MH3Simulation:
         self._sync_finger_mimics()
 
     def _attach_cameras(self) -> None:
-        """Attach configured cameras to their named robot links.
+        """Attach configured physical cameras to their named robot links.
         :return: None after attaching all cameras.
         :rtype: None
         """
-        # Attach each configured camera sensor to its parent mounting link using its relative pose.
-        for camera_config in self.config.cameras:
-            if not camera_config.enabled:
-                continue
+        # Attach each configured physical camera sensor to its parent mounting link using its relative pose.
+        for phys_name, camera in self._cameras.items():
+            cfg = self.config.get_camera(phys_name)
+            if cfg is None and phys_name == "head_left":
+                cfg = self.config.get_camera("head_depth")
+            elif cfg is None and phys_name == "base_left":
+                cfg = self.config.get_camera("base_depth")
+            parent_link = (
+                cfg.parent_link if cfg and cfg.parent_link else DEFAULT_CAMERA_MOUNTS.get(phys_name, ("", ()))[0]
+            )
+            transform = cfg.transform if cfg and cfg.transform else DEFAULT_CAMERA_MOUNTS.get(phys_name, ("", ()))[1]
             try:
-                parent = self.get_link(camera_config.parent_link)
+                parent = self.get_link(parent_link)
             except KeyError as error:
-                raise RuntimeError(
-                    f"Camera {camera_config.name!r} parent link {camera_config.parent_link!r} was not found"
-                ) from error
-            self._cameras[camera_config.name].attach(parent, np.asarray(camera_config.transform))
+                raise RuntimeError(f"Camera {phys_name!r} parent link {parent_link!r} was not found") from error
+            camera.attach(parent, np.asarray(transform))
 
     def _configure_gravity_compensation(self) -> None:
         """Cache static link properties and active DOFs for gravity compensation.
@@ -623,10 +639,13 @@ class MH3Simulation:
 
     @property
     def camera_names(self) -> tuple[str, ...]:
-        """List names of configured on-robot cameras.
-        :return: Public camera names.
+        """List names of configured on-robot cameras and feeds.
+        :return: Public camera and feed identifiers.
         :rtype: tuple[str, ...]
         """
+        # Return configured camera and feed identifiers that are enabled.
+        if self.config.cameras:
+            return tuple(cam.name for cam in self.config.cameras if cam.enabled)
         return tuple(self._cameras)
 
     def get_joint_state(self, names: Iterable[str] | None = None) -> JointState:
@@ -726,17 +745,19 @@ class MH3Simulation:
 
     def get_camera(self, name: str) -> Any:
         """Look up a native Genesis camera for advanced sensor operations.
-        :param name: Configured public camera name.
+        :param name: Configured public camera or feed name.
         :type name: str
         :return: Native Genesis camera object.
         :rtype: Any
         """
         # Ensure the simulation scene is constructed.
         self._require_built()
+        # Resolve physical camera identifier for stereo depth feeds.
+        phys_name = "head_left" if name == "head_depth" else ("base_left" if name == "base_depth" else name)
         # Validate that the camera name is registered in the scene.
-        if name not in self._cameras:
+        if phys_name not in self._cameras:
             raise KeyError(f"Unknown camera {name!r}; choose from {self.camera_names}")
-        return self._cameras[name]
+        return self._cameras[phys_name]
 
     def set_joint_positions(self, targets: Mapping[str, float], *, immediate: bool = False) -> None:
         """Command joint positions or teleport them immediately.
@@ -990,18 +1011,18 @@ class MH3Simulation:
         self,
         name: str,
         *,
-        rgb: bool = True,
-        depth: bool = True,
+        rgb: bool | None = None,
+        depth: bool | None = None,
         segmentation: bool = False,
         normal: bool = False,
     ) -> CameraFrame:
-        """Render selected channels from a named on-robot camera.
-        :param name: Public camera name to render.
+        """Render selected channels from a named on-robot camera or feed.
+        :param name: Public camera or feed name to render (e.g. head_left, head_depth, base_left).
         :type name: str
-        :param rgb: Include the RGB image when True.
-        :type rgb: bool
-        :param depth: Include the depth image when True.
-        :type depth: bool
+        :param rgb: Include the RGB image when True (defaults to True for color cameras, False for depth feeds).
+        :type rgb: bool | None
+        :param depth: Include the depth image when True (defaults to True for depth feeds, False for right cameras).
+        :type depth: bool | None
         :param segmentation: Include segmentation when True.
         :type segmentation: bool
         :param normal: Include surface normals when True.
@@ -1012,10 +1033,14 @@ class MH3Simulation:
         # Ensure the simulation scene is constructed.
         self._require_built()
         camera = self.get_camera(name)
+        # Determine visual channels based on camera or feed type if not explicitly requested.
+        is_depth_feed = name.endswith("_depth")
+        want_rgb = (not is_depth_feed) if rgb is None else rgb
+        want_depth = (is_depth_feed or name in {"head_left", "base_left"}) if depth is None else depth
         # Update camera position to follow its attached mounting link pose.
         camera.move_to_attach()
-        # Render the requested visual channels.
-        rendered = camera.render(rgb=rgb, depth=depth, segmentation=segmentation, normal=normal)
+        # Render the requested visual channels with Genesis.
+        rendered = camera.render(rgb=want_rgb, depth=want_depth, segmentation=segmentation, normal=normal)
         # Convert rendered Genesis tensors into standard NumPy arrays.
         values = [self._numpy(value, None) if value is not None else None for value in rendered]
         return CameraFrame(*values)

@@ -88,35 +88,39 @@ class MH3ControlPanel:
         self._last_snapshot_at = 0.0
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
-        # Index enabled and available camera configurations from simulation.
-        self._active_cameras: dict[str, CameraConfig] = {
+        # Index enabled and available camera feed configurations from simulation.
+        self._active_feeds: dict[str, CameraConfig] = {
             camera.name: camera
             for camera in simulation.config.cameras
-            if camera.enabled and camera.name in simulation.camera_names
+            if camera.enabled and (camera.name in simulation.camera_names or camera.name.endswith("_depth"))
         }
-        # Discover stereo camera sources with at least one active camera.
+        self._active_cameras: dict[str, CameraConfig] = self._active_feeds
+        # Discover stereo camera sources with at least one active feed.
         self._camera_sources: list[str] = [
-            source for source in ("head", "base") if any(cam.startswith(f"{source}_") for cam in self._active_cameras)
+            source for source in ("head", "base") if any(feed.startswith(f"{source}_") for feed in self._active_feeds)
         ]
         # Map source-qualified dashboard feed names to their originating cameras and channels.
         feed_map: dict[str, tuple[str, str]] = {}
         for source in ("head", "base"):
-            left_cam = f"{source}_left"
-            right_cam = f"{source}_right"
-            if left_cam in self._active_cameras:
-                feed_map[f"{source}-left-rgb"] = ("rgb", left_cam)
-                if self._active_cameras[left_cam].include_depth:
-                    feed_map[f"{source}-depth"] = ("depth", left_cam)
-            if right_cam in self._active_cameras:
-                feed_map[f"{source}-right-rgb"] = ("rgb", right_cam)
-                if f"{source}-depth" not in feed_map and self._active_cameras[right_cam].include_depth:
-                    feed_map[f"{source}-depth"] = ("depth", right_cam)
+            left_feed = f"{source}_left"
+            right_feed = f"{source}_right"
+            depth_feed = f"{source}_depth"
+            if left_feed in self._active_feeds:
+                feed_map[f"{source}-left-rgb"] = ("rgb", left_feed)
+                feed_map[left_feed] = ("rgb", left_feed)
+            if right_feed in self._active_feeds:
+                feed_map[f"{source}-right-rgb"] = ("rgb", right_feed)
+                feed_map[right_feed] = ("rgb", right_feed)
+            if depth_feed in self._active_feeds or (
+                left_feed in self._active_feeds and self._active_feeds[left_feed].include_depth
+            ):
+                feed_map[f"{source}-depth"] = ("depth", left_feed)
+                feed_map[depth_feed] = ("depth", left_feed)
         # Register any custom non-stereo cameras directly.
-        for cam_name, cam_cfg in self._active_cameras.items():
+        for cam_name in self._active_feeds:
             if not cam_name.startswith(("head_", "base_")):
-                feed_map[f"{cam_name}-rgb"] = ("rgb", cam_name)
-                if cam_cfg.include_depth:
-                    feed_map[f"{cam_name}-depth"] = ("depth", cam_name)
+                feed_map[cam_name] = ("rgb", cam_name)
+                feed_map[cam_name.replace("_", "-")] = ("rgb", cam_name)
         self._camera_feed_map = feed_map
         self._camera_frames: dict[str, bytes] = {}
         self._last_camera_request_at = 0.0
@@ -470,40 +474,72 @@ class MH3ControlPanel:
         """Refresh encoded feeds for specified cameras on the simulation thread.
         :param simulation: Simulation that owns the Genesis cameras.
         :type simulation: MH3Simulation
-        :param camera_names: Names of active cameras due for rendering.
+        :param camera_names: Names of active camera feeds due for rendering.
         :type camera_names: list[str]
         :return: None after updating the camera frames cache.
         :rtype: None
         """
         new_frames: dict[str, bytes] = {}
-        # Iterate over due cameras and capture frames matching their configuration.
-        for cam_name in camera_names:
-            cam_cfg = self._active_cameras[cam_name]
-            need_depth = cam_cfg.include_depth
-            capture = simulation.capture_camera(cam_name, rgb=True, depth=need_depth)
-            if capture.rgb is None or (need_depth and capture.depth is None):
-                raise RuntimeError(f"Camera {cam_name!r} capture returned incomplete buffers")
-            # Compress RGB buffer using camera-specific format and quality.
-            encoded_rgb = self._encode_rgb(capture.rgb, format_name=cam_cfg.rgb_format, quality=cam_cfg.rgb_quality)
-            # Compress depth buffer using camera-specific format and quality if enabled.
-            encoded_depth = (
-                self._encode_depth(
-                    capture.depth,
-                    cam_cfg.near_m,
-                    cam_cfg.far_m,
-                    format_name=cam_cfg.depth_format,
-                    quality=cam_cfg.depth_quality,
-                )
-                if need_depth and capture.depth is not None
-                else None
-            )
-            # Map encoded image buffers to their configured dashboard feed names.
-            for feed_name, (channel, feed_cam) in self._camera_feed_map.items():
-                if feed_cam == cam_name:
-                    if channel == "rgb":
-                        new_frames[feed_name] = encoded_rgb
-                    elif channel == "depth" and encoded_depth is not None:
-                        new_frames[feed_name] = encoded_depth
+        due_set = set(camera_names)
+        # Render head stereo camera channels if any head feed is due.
+        if any(feed in due_set for feed in ("head_left", "head_depth", "head-left-rgb", "head-depth")):
+            need_rgb = "head_left" in self._active_feeds
+            need_depth = "head_depth" in self._active_feeds
+            if need_rgb or need_depth:
+                capture = simulation.capture_camera("head_left", rgb=need_rgb, depth=need_depth)
+                if need_rgb and capture.rgb is not None:
+                    cfg = self._active_feeds["head_left"]
+                    encoded = self._encode_rgb(capture.rgb, format_name=cfg.format, quality=cfg.quality)
+                    new_frames["head_left"] = encoded
+                    new_frames["head-left-rgb"] = encoded
+                if need_depth and capture.depth is not None:
+                    cfg = self._active_feeds["head_depth"]
+                    encoded = self._encode_depth(
+                        capture.depth, cfg.near_m, cfg.far_m, format_name=cfg.format, quality=cfg.quality
+                    )
+                    new_frames["head_depth"] = encoded
+                    new_frames["head-depth"] = encoded
+        if ("head_right" in due_set or "head-right-rgb" in due_set) and "head_right" in self._active_feeds:
+            cfg = self._active_feeds["head_right"]
+            capture = simulation.capture_camera("head_right", rgb=True, depth=False)
+            if capture.rgb is not None:
+                encoded = self._encode_rgb(capture.rgb, format_name=cfg.format, quality=cfg.quality)
+                new_frames["head_right"] = encoded
+                new_frames["head-right-rgb"] = encoded
+        # Render base stereo camera channels if any base feed is due.
+        if any(feed in due_set for feed in ("base_left", "base_depth", "base-left-rgb", "base-depth")):
+            need_rgb = "base_left" in self._active_feeds
+            need_depth = "base_depth" in self._active_feeds
+            if need_rgb or need_depth:
+                capture = simulation.capture_camera("base_left", rgb=need_rgb, depth=need_depth)
+                if need_rgb and capture.rgb is not None:
+                    cfg = self._active_feeds["base_left"]
+                    encoded = self._encode_rgb(capture.rgb, format_name=cfg.format, quality=cfg.quality)
+                    new_frames["base_left"] = encoded
+                    new_frames["base-left-rgb"] = encoded
+                if need_depth and capture.depth is not None:
+                    cfg = self._active_feeds["base_depth"]
+                    encoded = self._encode_depth(
+                        capture.depth, cfg.near_m, cfg.far_m, format_name=cfg.format, quality=cfg.quality
+                    )
+                    new_frames["base_depth"] = encoded
+                    new_frames["base-depth"] = encoded
+        if ("base_right" in due_set or "base-right-rgb" in due_set) and "base_right" in self._active_feeds:
+            cfg = self._active_feeds["base_right"]
+            capture = simulation.capture_camera("base_right", rgb=True, depth=False)
+            if capture.rgb is not None:
+                encoded = self._encode_rgb(capture.rgb, format_name=cfg.format, quality=cfg.quality)
+                new_frames["base_right"] = encoded
+                new_frames["base-right-rgb"] = encoded
+        # Render custom cameras directly.
+        for cam_name in due_set:
+            if not cam_name.startswith(("head_", "base_", "head-", "base-")) and cam_name in self._active_feeds:
+                cfg = self._active_feeds[cam_name]
+                capture = simulation.capture_camera(cam_name, rgb=True, depth=False)
+                if capture.rgb is not None:
+                    encoded = self._encode_rgb(capture.rgb, format_name=cfg.format, quality=cfg.quality)
+                    new_frames[cam_name] = encoded
+                    new_frames[cam_name.replace("_", "-")] = encoded
         # Store newly encoded frames and clear previous camera errors under lock.
         with self._lock:
             self._camera_frames.update(new_frames)
