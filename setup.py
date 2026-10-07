@@ -215,7 +215,7 @@ def smoke_check(root: Path, backend: str, report: Path) -> int:
         if not config.cameras:
             raise RuntimeError("The bundled scene needs a camera for setup verification.")
         # Configure a lightweight camera resolution for fast smoke test verification.
-        camera = replace(config.cameras[0], width=128, height=72)
+        camera = replace(config.cameras[0], width=128, height=80)
         config = replace(config, backend=backend, show_viewer=False, realtime=False, cameras=(camera,))
         # Construct and compile the Genesis simulation scene.
         phase = "build"
@@ -231,10 +231,20 @@ def smoke_check(root: Path, backend: str, report: Path) -> int:
         phase = "render"
         write(ok=False)
         frame = simulation.capture_camera(camera.name, rgb=True, depth=True)
-        if frame.rgb is None or frame.rgb.shape != (72, 128, 3) or not np.isfinite(frame.rgb).all():
-            raise RuntimeError("Camera did not produce a valid RGB frame.")
-        if frame.depth is None or frame.depth.shape != (72, 128) or not np.isfinite(frame.depth).any():
-            raise RuntimeError("Camera did not produce a valid depth frame.")
+        if (
+            frame.rgb is None
+            or frame.rgb.shape != (camera.height, camera.width, 3)
+            or not np.isfinite(frame.rgb).all()
+        ):
+            shape = frame.rgb.shape if frame.rgb is not None else None
+            raise RuntimeError(f"Camera did not produce a valid RGB frame (expected {(camera.height, camera.width, 3)}, got {shape}).")
+        if (
+            frame.depth is None
+            or frame.depth.shape != (camera.height, camera.width)
+            or not np.isfinite(frame.depth).any()
+        ):
+            shape = frame.depth.shape if frame.depth is not None else None
+            raise RuntimeError(f"Camera did not produce a valid depth frame (expected {(camera.height, camera.width)}, got {shape}).")
         # Save verification preview image for user inspection.
         Image.fromarray(frame.rgb.astype(np.uint8)).save(report.parent / "preview.png")
         # Record successful smoke test completion with verified backend details.
