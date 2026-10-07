@@ -290,3 +290,4 @@ These are resources which you may consider using with this project.
 - [Google Gemma](https://ai.google.dev/gemma/docs "Google Gemma") - Google's lightweight, on-device multi-modal on-device AI model.
 - [Gemini Robotics ER-2](https://ai.google.dev/gemini-api/docs/generate-content/robotics-overview "Gemini Robotics ER-2") - Google's flagship Embodied Reasoning (ER) Vision-Language Model (VLM).
 - [LeRobot](https://huggingface.co/docs/lerobot/index "LeRobot") - Machine learning framework for robotics by [HuggingFace](https://huggingface.co "HuggingFace").
+- [py_trees](https://github.com/splintered-reality/py_trees "py_trees") - A Python behaviour tree implementation.
