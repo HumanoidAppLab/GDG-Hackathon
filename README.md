@@ -178,8 +178,9 @@ The browser dashboard automatically detects configured cameras and adapts in rea
 Inspect available joints and limits via `sim.joint_names` and `sim.get_joint_limits()`:
 
 - **Torso lift:** `slider` (travels from 0.0 to 0.3 m).
-- **Head:** `head_yaw`, `head_pitch`.
+- **Head:** `head_yaw` (−1.40 to 3.10 rad), `head_pitch` (−0.40 to 1.00 rad).
 - **Arms (7 DOF each):** `left_1` through `left_7` and `right_1` through `right_7`.
+  Wrist joints 6 and 7 use the vendor model bounds of −0.30 to 0.30 rad.
 - **Hands (6 controls per hand):**
   - **Fingers:** `left_index`, `left_middle`, `left_ring`, `left_little` (and matching `right_*` joints). Zero radians represents fully open; joints close through 1.57 rad. Dependent finger joints follow these root controls automatically via mimic constraints.
   - **Thumbs:** `left_thumb_1` (up to 1.6 rad) and `left_thumb_2` (up to 0.45 rad), along with their `right_*` counterparts.

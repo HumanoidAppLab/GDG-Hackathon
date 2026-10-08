@@ -234,18 +234,18 @@ wheels = [
 
 [[package]]
 name = "dracopy"
-version = "2.1.0"
+version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/05/24/3f04b1479b3de75dbef18ea0f4fcbb08abe686bd7a415a4961c846a7c1b9/dracopy-2.1.0.tar.gz", hash = "sha256:677fb7008468b856fdbbb431470ce102f00b82d5991b2a5c618734fbb908d635", size = 83316307, upload-time = "2026-09-17T03:24:38.814Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/29/e1/e8611bc37f7e3700e09692abb11ae7a821e97da344b05a8087f99b1aef2a/dracopy-2.2.0.tar.gz", hash = "sha256:feb7b7997dab749262d0b015524efb069cc4b53044920850310878c9011b618e", size = 83311208, upload-time = "2026-10-07T20:37:29.965Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b3/fb/bf25ab9236223d26923e00c297298f9ff0afdfbc7204e328754b992d1673/dracopy-2.1.0-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:18c8552ba89be40785111224a8e8ca24a02f2bfda24c8af6cb21aaf968620670", size = 2803453, upload-time = "2026-09-17T03:20:39.46Z" },
-    { url = "https://files.pythonhosted.org/packages/89/89/a4414ab2c852f147a1aed6015a2150aedeea848ba04820711e5c9d0b6659/dracopy-2.1.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:646fa4a12d30c72c68346520860bc8f950b68c8ad0a9a905bf399d1f953ba90a", size = 2596303, upload-time = "2026-09-25T14:20:18.459Z" },
-    { url = "https://files.pythonhosted.org/packages/c0/c1/a4b0523231eb413c3672df664dc24f866ff624562e1882919e2924d2a96b/dracopy-2.1.0-cp313-cp313-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:f935dc95243bfb769db4eeb50a92ce4721dcd4eaf7ad26096e64de5c4e3e2a6e", size = 4849887, upload-time = "2026-09-17T03:20:49.75Z" },
-    { url = "https://files.pythonhosted.org/packages/78/41/920c08196c738311bbfdeb1b4df67b386f29ffd4904e0b156608531ddd08/dracopy-2.1.0-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9168a4af637d6330a680b896b41a5553fbcc7809975752189d966d29c21b5d12", size = 4996956, upload-time = "2026-09-17T03:20:54.287Z" },
-    { url = "https://files.pythonhosted.org/packages/2f/c1/ad987629c0441bfc814e9bf36f765af6f1331fa611e2b4bba58c48fabcdd/dracopy-2.1.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:8e0fbc5b8b35b527cedc3e794248d78eb96ef69fd10654499ed1a3caeec6acb7", size = 5936825, upload-time = "2026-09-17T03:20:59.779Z" },
-    { url = "https://files.pythonhosted.org/packages/1b/48/27f25644f20ae81db98ef96bd0c1a79f5ddfc2912ada5593445bda364023/dracopy-2.1.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:60bfb012eb360a8d191972b6f313c92d3d3469ed40fe83667f10bdc6baeaedba", size = 6086542, upload-time = "2026-09-17T03:21:05.371Z" },
-    { url = "https://files.pythonhosted.org/packages/bc/3c/b273b76ee531557bb10d456888e34584963a808d596b81bc402b6f30893a/dracopy-2.1.0-cp313-cp313-win32.whl", hash = "sha256:b1f50a27b7be6486e77caaf53868432856e32ae744f8be95d948362558fd14af", size = 4548974, upload-time = "2026-09-17T03:21:14.281Z" },
-    { url = "https://files.pythonhosted.org/packages/c5/49/d0c97d898922f3ff0b61331c7d5ccc2c70de18b2ee8e157a3eeb6ff295ab/dracopy-2.1.0-cp313-cp313-win_amd64.whl", hash = "sha256:c83236c3dc2724f4a6996dd2c6629a63d04f0648a0a622286ed3a0b030087f6c", size = 5231627, upload-time = "2026-09-17T03:21:09.918Z" },
+    { url = "https://files.pythonhosted.org/packages/45/7b/9227301fbb6d4b4977cbc3e7ee24f19ce49ecf813416653a3d0095209b19/dracopy-2.2.0-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:0f2ba507a5b88f760384e08bb09464be6702a9c3a5d20dec5b9a69711beed248", size = 2804194, upload-time = "2026-10-07T20:36:33.501Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/e9/7ff57820f658fcfac3cb0e12be099baf031ea1f35c8180ebe67057bb5849/dracopy-2.2.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:67b58a1a99f505876651122688c9bf70b3809f7ff47d34a85471cf14481c5826", size = 2597489, upload-time = "2026-10-07T20:36:34.646Z" },
+    { url = "https://files.pythonhosted.org/packages/08/b8/a1031ca2625a275727eebd2c904622fd75ab3729dc5fdb08c871962b0698/dracopy-2.2.0-cp313-cp313-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:94af90d8ccf3bebb39f7e71be71cc43802f2fda57e8d11fe397c19ef3ed5e0fe", size = 4863717, upload-time = "2026-10-07T20:36:35.949Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/83/73182872913fd59b8a03a5e75d1a192c6b2c9a3bc4c7e221dad2631cb09f/dracopy-2.2.0-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ea0fc4a58554e74cf796ee058dbd434d4081923c206fdeac286c73f571eb4328", size = 4998219, upload-time = "2026-10-07T20:36:37.346Z" },
+    { url = "https://files.pythonhosted.org/packages/59/7d/2f9654ca25ee550341cb6384c5cd9372df28167c3d0018fc3acf348e9a50/dracopy-2.2.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:6cf1f0d0b3cdc4a6c0da617d3d4a2c718b26ce2d746e778d1ab07938d58f2b28", size = 5941256, upload-time = "2026-10-07T20:36:38.898Z" },
+    { url = "https://files.pythonhosted.org/packages/49/75/736956992cef65dd6734bf1d160e69f73d4eae1a6f2e476c8293f461c606/dracopy-2.2.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:0dba7b30e72e39c20dd74a5df21f1f82c08724133fba553d7f89136270b2325c", size = 6086236, upload-time = "2026-10-07T20:36:40.223Z" },
+    { url = "https://files.pythonhosted.org/packages/ff/e9/c3f91f33ea47de381df8feea47d5cee7a8a4e5f0660692f61bb912537a2e/dracopy-2.2.0-cp313-cp313-win32.whl", hash = "sha256:584f17d884815907be24e45fe2cba43a0f1f6967613280cac28a85c2ee1f9937", size = 4549661, upload-time = "2026-10-07T20:36:43.166Z" },
+    { url = "https://files.pythonhosted.org/packages/6e/3b/760e99aa7a35deaaf7df66959425cd461ed7de7b734d1bc8193a7e3dcb64/dracopy-2.2.0-cp313-cp313-win_amd64.whl", hash = "sha256:f48bf90f5651a957db9ffba03057aa224ec9bd815927749d4101737a48b547eb", size = 5232241, upload-time = "2026-10-07T20:36:41.633Z" },
 ]
 
 [[package]]
@@ -1087,11 +1087,11 @@ wheels = [
 
 [[package]]
 name = "pycparser"
-version = "3.0"
+version = "3.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1b/7d/92392ff7815c21062bea51aa7b87d45576f649f16458d78b7cf94b9ab2e6/pycparser-3.0.tar.gz", hash = "sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29", size = 103492, upload-time = "2026-01-21T14:26:51.89Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ac/d3/eb1d3bc30dda12f7e69640ae2ac8cb10240b71fb73024ad528b7d2ae73da/pycparser-3.1.tar.gz", hash = "sha256:b3fc6dec06a8b2fefa0ed4ff92285306a5e3be9987bc5603c9edbdc4e492418f", size = 105946, upload-time = "2026-10-08T12:26:34.349Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/c3/44f3fbbfa403ea2a7c779186dc20772604442dde72947e7d01069cbe98e3/pycparser-3.0-py3-none-any.whl", hash = "sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992", size = 48172, upload-time = "2026-01-21T14:26:50.693Z" },
+    { url = "https://files.pythonhosted.org/packages/99/ce/b3ae9ee0324d991c860187be2a6ee436d27a3d02397eaddbb101ec901f3d/pycparser-3.1-py3-none-any.whl", hash = "sha256:f09d358c840bd147b79e55f2bc494f18ea869dc897f5852a8f5766b74f787882", size = 48709, upload-time = "2026-10-08T12:26:32.97Z" },
 ]
 
 [[package]]
