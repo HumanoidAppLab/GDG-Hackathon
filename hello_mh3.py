@@ -118,8 +118,8 @@ def main() -> None:
         # Nod head down after 0.5 simulated seconds.
         if 0.5 <= simulation.sim_time < 1.0:
             simulation.set_joint_positions({"head_pitch": -0.3})
-        # Return head to level after 1.0 simulated seconds.
-        elif simulation.sim_time >= 1.0:
+        # Return head to level between 1.0 and 1.5 simulated seconds.
+        elif 1.0 <= simulation.sim_time < 1.5:
             simulation.set_joint_positions({"head_pitch": 0.0})
 
     # Register the step hook callback.

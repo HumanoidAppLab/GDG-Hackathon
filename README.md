@@ -142,6 +142,8 @@ cameras:
     quality: 80
   head_right:
     enabled: false
+    format: jpeg
+    quality: 80
   head_depth:
     enabled: true
     format: jpeg
@@ -152,6 +154,8 @@ cameras:
     quality: 80
   base_right:
     enabled: false
+    format: jpeg
+    quality: 80
   base_depth:
     enabled: true
     format: jpeg
@@ -268,7 +272,8 @@ points, valid_depth = sim.capture_pointcloud("head_left")
 
 # 8. Step hook: register callbacks to run after each physics step.
 def behavior_controller(simulation: MH3Simulation) -> None:
-    if simulation.sim_time > 1.0:
+    # Example timed motion: level head between 1.0 and 1.5 seconds.
+    if 1.0 <= simulation.sim_time < 1.5:
         simulation.set_joint_positions({"head_pitch": 0.0})
 
 

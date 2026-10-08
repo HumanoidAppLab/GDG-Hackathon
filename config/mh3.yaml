@@ -89,7 +89,7 @@ cameras:
     format: jpeg
     quality: 80
   head_right:
-    enabled: true
+    enabled: false
     format: jpeg
     quality: 80
   head_depth:
