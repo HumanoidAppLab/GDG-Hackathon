@@ -102,6 +102,8 @@ cameras:
     quality: 80
   base_right:
     enabled: false
+    format: jpeg
+    quality: 80
   base_depth:
     enabled: true
     format: jpeg
