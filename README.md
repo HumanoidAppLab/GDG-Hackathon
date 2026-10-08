@@ -1,5 +1,9 @@
 # MH3 Genesis Hackathon Starter
 
+## [Google Developers Group Windsor](https://gdg.community.dev/gdg-windsor "Google Developers Group Windsor")
+
+### [Build with AI - Smart Automation, Robotics, and Vision](https://kaggle.com/competitions/build-with-ai-smart-automation-robotics-and-vision "Build with AI - Smart Automation, Robotics, and Vision")
+
 This repository is a self-contained, Python-based starting point for building projects with the [Mirsee Robotics](https://mirsee.com "Mirsee Robotics Inc.") MH3 in [Genesis World](https://github.com/Genesis-Embodied-AI/genesis-world "Genesis World"). It includes the simulated MH3, a default world with a floor, a browser dashboard, and a Python API for controlling and observing the robot.
 
 ## Setup and Run
@@ -287,7 +291,7 @@ Advanced projects can also directly access `sim.scene`, `sim.robot`, `sim.floor`
 These are resources which you may consider using with this project.
 
 - [Genesis World Documentation](https://genesis-world.readthedocs.io/en/latest/user_guide/index.html "Genesis World - Documentation") - Core physics and rendering engine of this project.
-- [Google Gemma](https://ai.google.dev/gemma/docs "Google Gemma") - Google's lightweight, on-device multi-modal on-device AI model.
+- [Google Gemma](https://ai.google.dev/gemma/docs "Google Gemma") - Google's lightweight, on-device multi-modal AI model.
 - [Gemini Robotics ER-2](https://ai.google.dev/gemini-api/docs/generate-content/robotics-overview "Gemini Robotics ER-2") - Google's flagship Embodied Reasoning (ER) Vision-Language Model (VLM).
 - [LeRobot](https://huggingface.co/docs/lerobot/index "LeRobot") - Machine learning framework for robotics by [HuggingFace](https://huggingface.co "HuggingFace").
 - [py_trees](https://github.com/splintered-reality/py_trees "py_trees") - A Python behaviour tree implementation.
