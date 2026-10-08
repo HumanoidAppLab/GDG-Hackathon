@@ -103,7 +103,7 @@ class CameraConfig:
     name: str
     enabled: bool = True
     format: str = "jpeg"
-    quality: int = 80
+    quality: int = 100
     width: int = ZED_X_DEFAULT_WIDTH
     height: int = ZED_X_DEFAULT_HEIGHT
     near_m: float = 0.1

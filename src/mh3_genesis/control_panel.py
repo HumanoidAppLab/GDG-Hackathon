@@ -410,7 +410,7 @@ class MH3ControlPanel:
         return payload
 
     @staticmethod
-    def _encode_rgb(rgb: np.ndarray, format_name: str = "jpeg", quality: int = 80) -> bytes:
+    def _encode_rgb(rgb: np.ndarray, format_name: str = "jpeg", quality: int = 100) -> bytes:
         """Encode an RGB image in the configured image format.
         :param rgb: RGB image array.
         :type rgb: np.ndarray
@@ -436,7 +436,7 @@ class MH3ControlPanel:
         near_m: float,
         far_m: float,
         format_name: str = "jpeg",
-        quality: int = 85,
+        quality: int = 100,
     ) -> bytes:
         """Encode metric depth as a grayscale preview in the configured image format.
         :param depth: Metric depth image array.

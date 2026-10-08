@@ -53,7 +53,7 @@ def test_camera_config_resolution() -> None:
     assert cam.horizontal_fov_deg == 104.63
     assert cam.fps == 15.0
     assert cam.format == "jpeg"
-    assert cam.quality == 80
+    assert cam.quality == 100
 
 
 def test_config_validation_failures(tmp_path: Path) -> None:

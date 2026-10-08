@@ -113,7 +113,7 @@ Every camera feed shares the same clean configuration options:
 | :--- | :--- | :--- | :--- |
 | `enabled` | boolean | `true` | When `false`, the feed is completely turned off. If both RGB and depth for a physical sensor are disabled, Genesis omits that camera entirely from the scene to save GPU resources. |
 | `format` | string | `jpeg` | Encoding format: `jpeg` (fast and compact) or `png` (lossless). |
-| `quality` | integer | `80` (85 for depth) | Compression quality for JPEG encoding (`1` to `100`). |
+| `quality` | integer | `100` | Compression quality for JPEG encoding (`1` to `100`). |
 | `width` | integer | `960` | Render image width in pixels. If changed, `height` is automatically updated to maintain the camera's native 16:10 aspect ratio. |
 | `height` | integer | `600` | Render image height in pixels. If changed, `width` is automatically updated to maintain the camera's native 16:10 aspect ratio. |
 | `near_m` / `far_m` | float | `0.1` / `20.0` | Near and far clipping planes in metres. |
@@ -139,27 +139,27 @@ cameras:
   head_left:
     enabled: true
     format: jpeg
-    quality: 80
+    quality: 100
   head_right:
     enabled: false
     format: jpeg
-    quality: 80
+    quality: 100
   head_depth:
     enabled: true
     format: jpeg
-    quality: 85
+    quality: 100
   base_left:
     enabled: true
     format: jpeg
-    quality: 80
+    quality: 100
   base_right:
     enabled: false
     format: jpeg
-    quality: 80
+    quality: 100
   base_depth:
     enabled: true
     format: jpeg
-    quality: 85
+    quality: 100
 ```
 
 ### Dashboard Adaptation

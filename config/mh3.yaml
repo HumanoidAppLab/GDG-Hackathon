@@ -87,25 +87,25 @@ cameras:
   head_left:
     enabled: true
     format: jpeg
-    quality: 80
+    quality: 100
   head_right:
     enabled: false
     format: jpeg
-    quality: 80
+    quality: 100
   head_depth:
     enabled: true
     format: jpeg
-    quality: 85
+    quality: 100
   base_left:
     enabled: true
     format: jpeg
-    quality: 80
+    quality: 100
   base_right:
     enabled: false
     format: jpeg
-    quality: 80
+    quality: 100
   base_depth:
     enabled: true
     format: jpeg
-    quality: 85
+    quality: 100
 
