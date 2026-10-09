@@ -12,5 +12,7 @@ if ($architecture -ne "X64") {
 . "$PSScriptRoot\uv.ps1"
 Initialize-Mh3Uv
 $pythonVersion = (Get-Content "$PSScriptRoot\.python-version" -Raw).Trim()
+& $Mh3Uv python install --no-bin --no-registry $pythonVersion
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $Mh3Uv run --no-project --python $pythonVersion python setup.py @args
 exit $LASTEXITCODE

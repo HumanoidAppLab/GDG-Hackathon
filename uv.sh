@@ -12,21 +12,22 @@ mh3_find_uv() {
 }
 
 mh3_ensure_uv() {
+    # Keep the minimum uv version compatible with the download in .python-version.
     if mh3_find_uv; then
         local version
         version="$("$MH3_UV" --version)"
         if [[ "$version" =~ ^uv\ ([0-9]+)\.([0-9]+)\.([0-9]+) ]] &&
-            (( BASH_REMATCH[1] > 0 || BASH_REMATCH[2] > 12 || (BASH_REMATCH[2] == 12 && BASH_REMATCH[3] >= 21) )); then
+            (( BASH_REMATCH[1] > 0 || BASH_REMATCH[2] > 12 || (BASH_REMATCH[2] == 12 && BASH_REMATCH[3] >= 23) )); then
             return
         fi
     fi
-    echo "Installing uv 0.12.21 into .uv (no administrator access or shell changes)."
+    echo "Installing uv 0.12.23 into .uv (no administrator access or shell changes)."
     local installer
     installer="$(mktemp)"
     if command -v curl >/dev/null 2>&1; then
-        curl --fail --location --silent --show-error https://astral.sh/uv/0.12.21/install.sh -o "$installer" || { rm -f "$installer"; return 1; }
+        curl --fail --location --silent --show-error https://astral.sh/uv/0.12.23/install.sh -o "$installer" || { rm -f "$installer"; return 1; }
     elif command -v wget >/dev/null 2>&1; then
-        wget -q https://astral.sh/uv/0.12.21/install.sh -O "$installer" || { rm -f "$installer"; return 1; }
+        wget -q https://astral.sh/uv/0.12.23/install.sh -O "$installer" || { rm -f "$installer"; return 1; }
     else
         echo "Install curl or wget with your OS package manager, then rerun setup." >&2
         rm -f "$installer"

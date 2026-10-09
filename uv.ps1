@@ -14,17 +14,18 @@ function Find-Mh3Uv {
 }
 
 function Initialize-Mh3Uv {
+    # Keep the minimum uv version compatible with the download in .python-version.
     if (Find-Mh3Uv) {
         $versionText = & $script:Mh3Uv --version
         if ($LASTEXITCODE -eq 0 -and $versionText -match '^uv (\d+\.\d+\.\d+)' -and
-            [version]$Matches[1] -ge [version]'0.12.21') { return }
+            [version]$Matches[1] -ge [version]'0.12.23') { return }
     }
-    Write-Host "Installing uv 0.12.21 into .uv (no administrator access or shell changes)."
+    Write-Host "Installing uv 0.12.23 into .uv (no administrator access or shell changes)."
     $installer = Join-Path ([IO.Path]::GetTempPath()) ([IO.Path]::GetRandomFileName() + ".ps1")
     $previousInstall = $env:UV_UNMANAGED_INSTALL
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -UseBasicParsing -Uri "https://astral.sh/uv/0.12.21/install.ps1" -OutFile $installer
+        Invoke-WebRequest -UseBasicParsing -Uri "https://astral.sh/uv/0.12.23/install.ps1" -OutFile $installer
         $env:UV_UNMANAGED_INSTALL = Join-Path $PSScriptRoot ".uv"
         $shell = (Get-Process -Id $PID).Path
         & $shell -NoProfile -ExecutionPolicy Bypass -File $installer

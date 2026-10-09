@@ -23,6 +23,8 @@ This repository is a self-contained, Python-based starting point for building pr
 
 ### Installation
 
+The setup scripts install uv and the pinned Python version automatically; no existing Python installation is required.
+
 > [!NOTE]
 > Initial setup may take a few minutes while kernels compile and the environment is verified.  
 

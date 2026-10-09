@@ -25,4 +25,5 @@ fi
 source "$project_dir/uv.sh"
 mh3_ensure_uv
 python_version="$(cat .python-version)"
+"$MH3_UV" python install --no-bin --no-registry "$python_version"
 exec "$MH3_UV" run --no-project --python "$python_version" python setup.py "$@"
