@@ -396,8 +396,8 @@ print(json.dumps({'device': device, 'torch': torch.__version__, 'hip': torch.ver
             "--prerelease",
             "disallow",
         )
-        # Verify that all installed package dependencies remain satisfied.
-        self.uv_run("pip", "check", "--python", self.python)
+        # The caller checks the full environment after accelerator selection so
+        # unrelated dependency errors cannot trigger an accelerator fallback.
 
     def smoke(self, backend: str) -> dict[str, Any]:
         """Run an isolated verification subprocess and read its report.
