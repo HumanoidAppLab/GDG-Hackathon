@@ -164,8 +164,8 @@ def prepare(document: Any, python: Version, genesis: str) -> Any:
     # Work on a deep copy of the configuration document.
     document = copy.deepcopy(document)
     major, minor = python.release[:2]
-    # Update requires-python range and linter target to align with the candidate Python minor.
-    document["project"]["requires-python"] = f">={python},<{major}.{minor + 1}"
+    # Pin the bootstrap patch separately; compatibility covers the Python minor series.
+    document["project"]["requires-python"] = f">={major}.{minor},<{major}.{minor + 1}"
     document.setdefault("tool", {}).setdefault("ruff", {})["target-version"] = f"py{major}{minor}"
     document["tool"].setdefault("uv", {})["prerelease"] = "disallow"
     found_genesis = False
