@@ -529,9 +529,8 @@ print(json.dumps({'device': device, 'torch': torch.__version__, 'hip': torch.ver
         (self.local / "requirements.txt").write_text(
             self.uv_run("pip", "freeze", "--python", self.python, capture=True).stdout, encoding="utf-8"
         )
-        print(
-            "Setup passed. Camera preview: .setup/preview.png. Run your scripts with: uv run hello_mh3.py", flush=True
-        )
+        runner = r".\run.ps1" if platform.system() == "Windows" else "./run.sh"
+        print(f"Setup passed. Camera preview: .setup/preview.png. Run your scripts with: {runner} hello_mh3.py", flush=True)
 
 
 def main() -> None:

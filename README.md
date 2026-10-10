@@ -47,10 +47,23 @@ The setup scripts install uv and the pinned Python version automatically; no exi
 
 ### Running Scripts
 
-After setup, run simulation scripts (such as [`hello_mh3.py`](hello_mh3.py "hello_mh3.py")) with `uv run`:
+After setup, run simulation scripts (such as [`hello_mh3.py`](hello_mh3.py "hello_mh3.py")) with the run script for your platform:
+
+**Linux / Apple Silicon macOS:**
 ```bash
-uv run hello_mh3.py
+./run.sh hello_mh3.py
 ```
+
+**Windows x64 (PowerShell):**
+```powershell
+.\run.ps1 hello_mh3.py
+```
+
+Both scripts forward all arguments to `uv run --no-sync`, including script parameters and uv options (for example, `./run.sh my_script.py --steps 300` or `.\run.ps1 my_script.py --steps 300`). They use the project's local uv installation when available and run from the project directory.
+
+Setup installs the locked shared dependencies first, then selects a PyTorch wheel for your hardware. On a fresh environment, Torch is deferred until this selection, so the separate Torch installation is expected.
+
+The run scripts preserve the selected wheel: plain `uv run` synchronizes against `uv.lock` and can replace the selected CUDA wheel with the locked CPU build on Windows. `--frozen` still synchronizes packages and does not prevent this. If this has already happened, rerun setup to restore and verify the hardware-selected wheel, then use the run script.
 
 ## Upgrading
 
@@ -203,10 +216,10 @@ Discover all link identifiers using `sim.link_names` before passing one to `sim.
 
 ### Running Custom Scripts
 
-After running setup, execute your custom scripts with `uv run`:
+After running setup, execute your custom scripts with `./run.sh` (or `.\run.ps1` on Windows):
 
 ```bash
-uv run my_script.py
+./run.sh my_script.py
 ```
 
 ### API Usage Example - `hello_mh3.py`
@@ -214,7 +227,7 @@ uv run my_script.py
 A complete, self-contained starter script demonstrating scene hooks, joint commands, base driving, state queries, inverse kinematics, camera capture, and step hooks is provided in [`hello_mh3.py`](hello_mh3.py "hello_mh3.py"). Run it directly with:
 
 ```bash
-uv run hello_mh3.py
+./run.sh hello_mh3.py  # Windows: .\run.ps1 hello_mh3.py
 ```
 
 Or use it as a reference for your own scripts:
