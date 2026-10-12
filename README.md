@@ -6,6 +6,8 @@
 
 This repository is a self-contained, Python-based starting point for building projects with the [Mirsee Robotics](https://mirsee.com "Mirsee Robotics Inc.") MH3 in [Genesis World](https://github.com/Genesis-Embodied-AI/genesis-world "Genesis World"). It includes the simulated MH3, a default world with a floor, a browser dashboard, and a Python API for controlling and observing the robot.
 
+[![Build with AI - Smart Automation, Robotics, and Vision](MH3.png)](https://kaggle.com/competitions/build-with-ai-smart-automation-robotics-and-vision "Build with AI - Smart Automation, Robotics, and Vision")
+
 ## Setup and Run
 
 ### Supported Platforms
