@@ -8,9 +8,9 @@ authors = [
 ]
 requires-python = ">=3.13,<3.14"
 dependencies = [
-    "genesis-world[usd]==1.4.4",
+    "genesis-world[usd]==1.4.5",
     # PyMeshLab's Windows wheels require this, but its Linux metadata omits it.
-    "msvc-runtime==14.44.35112; sys_platform == \"win32\"",
+    "msvc-runtime==14.51.36231; sys_platform == \"win32\"",
     "numpy==2.5.4",
     "pillow==11.3.0",
     "pyyaml==6.0.3",
@@ -39,6 +39,6 @@ build-backend = "uv_build"
 dev = [
     "packaging==26.3",
     "pytest==9.1.1",
-    "ruff==0.17.1",
+    "ruff==0.17.2",
     "tomlkit==0.15.2",
 ]
