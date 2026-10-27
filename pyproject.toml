@@ -32,13 +32,13 @@ addopts = "-p no:launch_ros -p no:launch_testing"
 [tool.uv]
 prerelease = "disallow"
 [build-system]
-requires = ["uv_build==0.13.5"]
+requires = ["uv_build==0.13.6"]
 build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
     "packaging==26.3",
     "pytest==9.1.1",
-    "ruff==0.17.2",
+    "ruff==0.17.3",
     "tomlkit==0.15.2",
 ]
