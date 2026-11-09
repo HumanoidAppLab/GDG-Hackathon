@@ -15,15 +15,17 @@ upgrade = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(upgrade)
 
 
-def test_release_accepts_python_3139():
+def test_release_accepts_selected_python_minor():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())
     lock = tomllib.loads((ROOT / "uv.lock").read_text())
+    selected = Version((ROOT / ".python-version").read_text().strip())
+    major, minor = selected.release[:2]
     for requirement in (project["project"]["requires-python"], lock["requires-python"]):
         supported = SpecifierSet(requirement)
-        assert Version("3.13.9") in supported
-        assert Version((ROOT / ".python-version").read_text().strip()) in supported
-        assert Version("3.12.9") not in supported
-        assert Version("3.14.0") not in supported
+        assert Version(f"{major}.{minor}.0") in supported
+        assert selected in supported
+        assert Version(f"{major}.{minor - 1}.9") not in supported
+        assert Version(f"{major}.{minor + 1}.0") not in supported
 
 
 @pytest.mark.parametrize("python", ["3.13.16", "3.14.7"])

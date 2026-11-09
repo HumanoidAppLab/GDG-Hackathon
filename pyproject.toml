@@ -6,9 +6,11 @@ readme = "README.md"
 authors = [
     { name = "Steven Rice", email = "srice@datarealminc.com" }
 ]
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.14,<3.15"
 dependencies = [
-    "genesis-world[usd]==1.4.5",
+    "genesis-world[usd]==1.4.6",
+    # Genesis 1.4.6 imports Matplotlib at runtime but declares it only in its dev extra.
+    "matplotlib==3.11.2",
     # PyMeshLab's Windows wheels require this, but its Linux metadata omits it.
     "msvc-runtime==14.51.36231; sys_platform == \"win32\"",
     "numpy==2.5.4",
@@ -23,7 +25,7 @@ mh3-genesis = "mh3_genesis:main"
 
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py314"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -39,6 +41,6 @@ build-backend = "uv_build"
 dev = [
     "packaging==26.3",
     "pytest==9.2.0",
-    "ruff==0.17.3",
+    "ruff==0.17.4",
     "tomlkit==0.15.2",
 ]

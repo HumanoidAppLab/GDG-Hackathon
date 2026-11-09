@@ -25,7 +25,9 @@ def test_windows_runtime_is_locked():
     assert marker.evaluate({"sys_platform": "win32"})
     assert not marker.evaluate({"sys_platform": "linux"})
     assert not marker.evaluate({"sys_platform": "darwin"})
-    assert any("cp313-cp313-win_amd64.whl" in wheel["url"] for wheel in packages["msvc-runtime"]["wheels"])
+    major, minor = (ROOT / ".python-version").read_text().strip().split(".")[:2]
+    python_tag = f"cp{major}{minor}"
+    assert any(f"{python_tag}-{python_tag}-win_amd64.whl" in wheel["url"] for wheel in packages["msvc-runtime"]["wheels"])
     assert "msvc-runtime" not in setup.accelerator_exclusions(lock)
 
 
