@@ -13,7 +13,7 @@ dependencies = [
     "matplotlib==3.11.2",
     # PyMeshLab's Windows wheels require this, but its Linux metadata omits it.
     "msvc-runtime==14.51.36231; sys_platform == \"win32\"",
-    "numpy==2.5.4",
+    "numpy==2.5.5",
     "pillow==11.3.0",
     "pyyaml==6.0.3",
     "scipy==1.18.1",
