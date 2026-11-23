@@ -8,14 +8,14 @@ authors = [
 ]
 requires-python = ">=3.14,<3.15"
 dependencies = [
-    "genesis-world[usd]==1.4.7",
+    "genesis-world[usd]==1.5.0",
     # Genesis 1.4.6 imports Matplotlib at runtime but declares it only in its dev extra.
     "matplotlib==3.11.2",
     # PyMeshLab's Windows wheels require this, but its Linux metadata omits it.
     "msvc-runtime==14.51.36231; sys_platform == \"win32\"",
     "numpy==2.5.5",
-    "pillow==11.3.0",
-    "pyyaml==6.0.3",
+    "pillow==13.0.0",
+    "pyyaml==6.0.4",
     "scipy==1.18.1",
     "torch==2.15.0",
 ]
